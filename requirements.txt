@@ -1,8 +1,9 @@
-streamlit==1.32.0
+streamlit
 pandas
 openpyxl
 pillow
 pyzbar
 requests
 msal
+
 
