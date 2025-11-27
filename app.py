@@ -635,22 +635,20 @@ def screen_scan():
     st.divider()
 
     # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
+    # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
     col_tbl_btn, _ = st.columns([2, 1])
     with col_tbl_btn:
-        if st.button("Ver Tabla Base 📊", use_container_width=True):
-            # Toggle: si estaba visible, la oculta; si no, la muestra
+        if st.button("Ver Tabla Base 📊", use_container_width=True, key="btn_ver_tabla_base"):
             st.session_state.show_base_table = not st.session_state.show_base_table
             st.rerun()
 
     if st.session_state.show_base_table:
         base_df = st.session_state.file_data
-
         st.subheader("Tabla Base Cargada")
 
         if base_df.empty:
             st.warning("No hay tabla base cargada. Vuelva a **Seleccionar Archivo Base**.")
         else:
-            # Opciones de filtro por Estado_Sys
             estados_unicos = (
                 base_df['Estado_Sys']
                 .dropna()
@@ -679,10 +677,9 @@ def screen_scan():
                 use_container_width=True
             )
 
-        st.divider()  # pequeña separación antes del botón Cargar Tareas
-
+        st.divider()
     # --- Cargar Tareas ---
-    if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True):
+    if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True, key="btn_cargar_tareas"):
         if not st.session_state.scanned_codes:
             st.error("Debe agregar al menos un código.")
         else:
@@ -1047,6 +1044,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
