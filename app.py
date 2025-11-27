@@ -736,41 +736,6 @@ def screen_scan():
 
         st.divider()
 
-    # --- Cargar Tareas ---
-    if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True, key="btn_cargar_tareas"):
-        if not st.session_state.scanned_codes:
-            st.error("Debe agregar al menos un código.")
-        else:
-            full_df = st.session_state.file_data
-            if full_df.empty:
-                st.error("No hay datos cargados. Vuelva al inicio.")
-                return
-
-            # 🔹 Normalizamos tipos y espacios
-            codigos_scan = [str(c).strip() for c in st.session_state.scanned_codes]
-            
-            col_cod = full_df['CodArtVenta'].astype(str).str.strip()
-            col_estado = full_df['Estado_Sys'].astype(str).str.strip()
-            
-            # 🔹 Hacemos copy y guardamos el índice original de la tabla base
-            tasks = full_df[
-                (col_cod.isin(codigos_scan)) &
-                (col_estado == 'Pendiente')
-            ].copy()
-
-            tasks['__original_index__'] = tasks.index
-
-            if tasks.empty:
-                st.warning("No se encontraron tareas pendientes para estos códigos.")
-            else:
-                st.session_state.session_tasks = tasks.reset_index(drop=True)
-                st.session_state.current_task_index = 0
-                st.session_state.processed_ids = []
-                st.session_state.processed_original_indices = []
-                st.success(f"Se cargaron {len(tasks)} tareas.")
-                time.sleep(1)
-                navigate_to('screen_execution')
-
 
     # =========================
     # 2) Escaneo con cámara
@@ -1126,6 +1091,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
