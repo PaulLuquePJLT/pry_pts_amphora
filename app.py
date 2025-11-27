@@ -773,12 +773,12 @@ def screen_execution():
         col_confirm, col_cancel = st.columns([3, 1])
         with col_confirm:
             if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
-            st.session_state.processed_ids.append(current_task['ID'])
-            st.session_state.current_task_index += 1
-            # Guardar ID procesado
-            st.session_state.processed_ids.append(current_task['ID'])
-            # Avanzar
-            st.session_state.current_task_index += 1
+                st.session_state.processed_ids.append(current_task['ID'])
+                st.session_state.current_task_index += 1
+                # Guardar ID procesado
+                st.session_state.processed_ids.append(current_task['ID'])
+                # Avanzar
+                st.session_state.current_task_index += 1
 
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
@@ -894,6 +894,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
