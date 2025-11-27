@@ -665,28 +665,28 @@ def screen_execution():
             st.caption(current_task['DescArtProveedor'])
                     
         with col_det2:
-        # Detalle de producto + Cant/Bulto en horizontal
-        col_det1, col_det2 = st.columns([2, 1])
-
-        with col_det1:
-            st.markdown("**Producto / Cod. Venta**")
-            st.text(f"{current_task['CodArtVenta']}")
-            st.caption(current_task['DescArtProveedor'])
-
-        with col_det2:
-            col_q, col_b = st.columns(2)
-            with col_q:
-                st.markdown("**Cant.**")
-                st.markdown(
-                    f"<div class='big-number'>{current_task['CANTIDAD']}</div>",
-                    unsafe_allow_html=True
-                )
-            with col_b:
-                st.markdown("**Bulto**")
-                st.markdown(
-                    f"<div class='big-number'>{current_task['BULTO']}</div>",
-                    unsafe_allow_html=True
-                )
+            # Detalle de producto + Cant/Bulto en horizontal
+            col_det1, col_det2 = st.columns([2, 1])
+    
+            with col_det1:
+                st.markdown("**Producto / Cod. Venta**")
+                st.text(f"{current_task['CodArtVenta']}")
+                st.caption(current_task['DescArtProveedor'])
+    
+            with col_det2:
+                col_q, col_b = st.columns(2)
+                with col_q:
+                    st.markdown("**Cant.**")
+                    st.markdown(
+                        f"<div class='big-number'>{current_task['CANTIDAD']}</div>",
+                        unsafe_allow_html=True
+                    )
+                with col_b:
+                    st.markdown("**Bulto**")
+                    st.markdown(
+                        f"<div class='big-number'>{current_task['BULTO']}</div>",
+                        unsafe_allow_html=True
+                    )
 
         st.markdown("---")
 
@@ -827,6 +827,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
