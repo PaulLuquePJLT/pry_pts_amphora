@@ -614,7 +614,7 @@ def screen_scan():
                 st.success(f"Código {code_input} agregado.")
 
     # --- Botón Demo ---
-    if st.button("Simular Escaneo (Demo)"):
+    if st.button("Simular Escaneo (Demo)", key="btn_demo_scan"):
         demos = ['SKU-101', '36710325']
         for d in demos:
             if d not in st.session_state.scanned_codes:
@@ -626,7 +626,7 @@ def screen_scan():
 
     if st.session_state.scanned_codes:
         st.table(pd.DataFrame(st.session_state.scanned_codes, columns=["Código"]))
-        if st.button("Limpiar lista", type="primary"):
+        if st.button("Limpiar lista", type="primary", key="btn_limpiar_lista"):
             st.session_state.scanned_codes = []
             st.rerun()
     else:
@@ -634,7 +634,6 @@ def screen_scan():
 
     st.divider()
 
-    # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
     # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
     col_tbl_btn, _ = st.columns([2, 1])
     with col_tbl_btn:
@@ -678,6 +677,7 @@ def screen_scan():
             )
 
         st.divider()
+
     # --- Cargar Tareas ---
     if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True, key="btn_cargar_tareas"):
         if not st.session_state.scanned_codes:
@@ -1044,6 +1044,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
