@@ -758,40 +758,35 @@ def screen_scan():
             )
             # -------- ESCÁNER EN VIVO CON CÁMARA --------
     
-        st.caption(
-            "Apunte la cámara al código de barras dentro del recuadro. "
-            "Cuando se lea un código válido se agregará automáticamente a la lista."
-        )
-    
-        webrtc_ctx = webrtc_streamer(
-            key="barcode-scanner-live",
-            mode=WebRtcMode.SENDRECV,           # 👈 IMPORTANTE para que se vea el video
-            rtc_configuration=RTC_CONFIGURATION,
-            media_stream_constraints={
-                "video": {
-                    "facingMode": {"ideal": "environment"}  # intenta cámara trasera
-                },
-                "audio": False,
-            },
-            video_processor_factory=LiveBarcodeProcessor,
-            async_processing=True,
-        )
-    
-        # Si el procesador está activo, revisamos si detectó un código nuevo
-        if webrtc_ctx and webrtc_ctx.video_processor:
-            code = webrtc_ctx.video_processor.last_code
-    
-            if code:
-                code = str(code).strip()
-    
-                if code not in st.session_state.scanned_codes:
-                    st.session_state.scanned_codes.append(code)
-                    st.success(f"Código {code} agregado desde cámara en vivo.")
-                else:
-                    st.info(f"El código {code} ya está en la lista.")
-    
-                # Reset para no repetir en cada frame
-                webrtc_ctx.video_processor.last_code = None
+    st.caption(
+        "Apunte la cámara al código de barras dentro del recuadro. "
+        "Si la cámara en vivo no se conecta, use el escaneo por foto."
+    )
+
+    webrtc_ctx = webrtc_streamer(
+        key="barcode-scanner-live",
+        video_processor_factory=LiveBarcodeProcessor,
+        media_stream_constraints={
+            "video": True,
+            "audio": False,
+        },
+        async_processing=True,
+    )
+
+    if webrtc_ctx and webrtc_ctx.video_processor:
+        code = webrtc_ctx.video_processor.last_code
+
+        if code:
+            code = str(code).strip()
+
+            if code not in st.session_state.scanned_codes:
+                st.session_state.scanned_codes.append(code)
+                st.success(f"Código {code} agregado desde cámara en vivo.")
+            else:
+                st.info(f"El código {code} ya está en la lista.")
+
+            webrtc_ctx.video_processor.last_code = None
+
 
 
     
@@ -1243,6 +1238,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
