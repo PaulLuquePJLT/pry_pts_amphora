@@ -790,7 +790,6 @@ def screen_scan():
     # ------------------------------------------------------------------
     # 2) ESCÁNER EN VIVO CON CÁMARA
     # ------------------------------------------------------------------
-    st.markdown("### Escanear con cámara (en vivo)")
     st.caption(
         "Apunte el código dentro del recuadro. "
         "Cuando lo tenga enfocado, pulse **'Validar código detectado'** "
@@ -825,20 +824,6 @@ def screen_scan():
             if webrtc_ctx and webrtc_ctx.video_processor:
                 webrtc_ctx.video_processor.last_code = None
 
-    # ------------------------------------------------------------------
-    # 3) BOTÓN DEMO
-    # ------------------------------------------------------------------
-    if st.button("Simular Escaneo (Demo)", key="btn_demo_scan"):
-        demos = ["SKU-101", "36710325"]  # ajusta si quieres
-        any_new = False
-        for d in demos:
-            if d not in st.session_state.scanned_codes:
-                st.session_state.scanned_codes.append(d)
-                any_new = True
-        if any_new:
-            st.success("Se agregaron códigos de demostración.")
-        else:
-            st.info("Los códigos de demo ya estaban en la lista.")
 
     # ------------------------------------------------------------------
     # 4) LISTA DE CÓDIGOS EN SESIÓN
@@ -902,107 +887,6 @@ def screen_scan():
             st.success(f"Se cargaron {len(tasks)} tareas.")
             time.sleep(0.8)
             navigate_to("screen_execution")
-
-
-    # =========================
-    # 2) Escaneo con cámara
-    # =========================
-
-    with st.expander("📷 Escanear con cámara", expanded=False):
-        if not st.session_state.show_camera:
-            st.caption("Pulsa el botón para abrir la cámara del dispositivo.")
-            if st.button("Activar cámara 📷", key="btn_open_cam"):
-                st.session_state.show_camera = True
-                st.rerun()
-        else:
-            st.caption("La cámara está activa. Toma una foto del código de barras.")
-            cam_img = st.camera_input(
-                "Usar cámara del dispositivo",
-                key="cam_input",
-                label_visibility="collapsed"
-            )
-
-            # Botón para cerrar la cámara (opcional)
-            if st.button("Cerrar cámara ✖️", key="btn_close_cam"):
-                st.session_state.show_camera = False
-                st.rerun()
-
-            if cam_img is not None:
-                image = Image.open(cam_img)
-                decoded_objects = decode(image)
-
-                if decoded_objects:
-                    cam_code = decoded_objects[0].data.decode("utf-8").strip()
-                    if cam_code:
-                        if cam_code in st.session_state.scanned_codes:
-                            st.info(f"El código {cam_code} ya está en la lista.")
-                        else:
-                            st.session_state.scanned_codes.append(cam_code)
-                            st.success(f"Código {cam_code} agregado desde cámara.")
-                    else:
-                        st.error("No se pudo interpretar el código leído.")
-                else:
-                    st.error("No se detectó ningún código de barras en la imagen. Intenta acercar más la cámara.")
-
-    # =========================
-    # 3) Botón Demo (opcional)
-    # =========================
-    if st.button("Simular Escaneo (Demo)"):
-        demos = ['SKU-101', '36710325']
-        for d in demos:
-            if d not in st.session_state.scanned_codes:
-                st.session_state.scanned_codes.append(d)
-        st.rerun()
-
-    # =========================
-    # 4) Lista de códigos
-    # =========================
-    st.subheader(f"Códigos en sesión ({len(st.session_state.scanned_codes)})")
-
-    if st.session_state.scanned_codes:
-        df_codigos = pd.DataFrame(
-            {"Código": st.session_state.scanned_codes}
-        )
-        st.dataframe(
-            df_codigos,
-            use_container_width=True,
-            height=160
-        )
-
-        if st.button("Limpiar lista", type="primary"):
-            st.session_state.scanned_codes = []
-            st.rerun()
-    else:
-        st.info("No hay códigos escaneados.")
-
-    st.divider()
-
-    # =========================
-    # 5) Cargar Tareas
-    # =========================
-    if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True):
-        if not st.session_state.scanned_codes:
-            st.error("Debe agregar al menos un código.")
-        else:
-            full_df = st.session_state.file_data
-            if full_df.empty:
-                st.error("No hay datos cargados. Vuelva al inicio.")
-                return
-
-            tasks = full_df[
-                (full_df['CodArtVenta'].astype(str).isin(st.session_state.scanned_codes)) &
-                (full_df['Estado_Sys'] == 'Pendiente')
-            ]
-
-            if tasks.empty:
-                st.warning("No se encontraron tareas pendientes para estos códigos.")
-            else:
-                st.session_state.session_tasks = tasks.reset_index(drop=True)  # Reset index importante
-                st.session_state.current_task_index = 0
-                st.session_state.processed_ids = []
-                st.success(f"Se cargaron {len(tasks)} tareas.")
-                time.sleep(1)
-                navigate_to('screen_execution')
 
 
 
@@ -1258,6 +1142,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
