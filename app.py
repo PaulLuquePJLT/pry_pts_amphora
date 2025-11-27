@@ -260,29 +260,100 @@ if 'show_base_table' not in st.session_state:
 class LiveBarcodeProcessor(VideoProcessorBase):
     """
     Procesa frames de la cámara en vivo y detecta códigos de barras/QR.
-    Guarda el último código detectado en self.last_code.
+    - Define una zona central (ROI) donde se espera el código.
+    - Hace zoom digital sobre esa zona.
+    - Intenta decodificar códigos con pyzbar.
+    - Guarda el último código detectado en self.last_code.
     """
     def __init__(self) -> None:
         self.last_code = None
 
+    def _try_decode(self, img):
+        """Intenta decodificar códigos en una imagen dada."""
+        from pyzbar.pyzbar import decode as decode_barcodes
+
+        decoded = decode_barcodes(img)
+        if decoded:
+            obj = decoded[0]  # nos quedamos con el primero
+            code = obj.data.decode("utf-8", "ignore").strip()
+            return code, obj
+        return None, None
+
     def recv(self, frame):
-        # Convertir frame de Streamlit a numpy (BGR)
+        import cv2
+        import av
+
+        # Frame de webrtc -> numpy BGR
         img = frame.to_ndarray(format="bgr24")
 
-        # Detectar códigos
-        decoded = decode_barcodes(img)
+        # Escala de grises
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        for obj in decoded:
-            code = obj.data.decode("utf-8").strip()
-            # Guardamos solo el primero del frame
-            self.last_code = code
+        h, w = gray.shape
 
-            # (Opcional) Dibujar un recuadro verde donde se detectó el código
-            x, y, w, h = obj.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # --- Zona central (ROI) donde el usuario debe poner la etiqueta ---
+        # recortamos 60% central de la imagen
+        mw = int(w * 0.2)
+        mh = int(h * 0.2)
+        roi = gray[mh:h-mh, mw:w-mw]
 
-        # Devolver el frame (con o sin recuadros)
+        # Hacemos zoom digital para que el código se vea más grande
+        roi_big = cv2.resize(roi, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_LINEAR)
+
+        # Intentamos decodificar en varias orientaciones
+        candidates = [
+            roi_big,
+            cv2.rotate(roi_big, cv2.ROTATE_90_CLOCKWISE),
+            cv2.rotate(roi_big, cv2.ROTATE_90_COUNTERCLOCKWISE),
+        ]
+
+        decoded_code = None
+        obj_rect = None
+
+        for cand in candidates:
+            code, obj = self._try_decode(cand)
+            if code:
+                decoded_code = code
+                obj_rect = obj.rect if obj is not None else None
+                break
+
+        # Si encontramos código, lo guardamos
+        if decoded_code:
+            self.last_code = decoded_code
+
+        # --- Dibujos de ayuda sobre la imagen original ---
+        # Marco del ROI
+        cv2.rectangle(
+            img,
+            (mw, mh),
+            (w - mw, h - mh),
+            (255, 255, 255),
+            1,
+        )
+
+        # Si tenemos rectángulo de detección, lo aproximamos a coords originales
+        if obj_rect:
+            x, y, rw, rh = obj_rect
+
+            # Como hicimos zoom x1.8 y recorte, revertimos
+            x = int(x / 1.8) + mw
+            y = int(y / 1.8) + mh
+            rw = int(rw / 1.8)
+            rh = int(rh / 1.8)
+
+            cv2.rectangle(img, (x, y), (x + rw, y + rh), (0, 255, 0), 2)
+            cv2.putText(
+                img,
+                decoded_code,
+                (x, y - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0),
+                2,
+            )
+
         return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 
 def screen_base_table():
     st.title("Tabla Base - Resumen")
@@ -702,13 +773,16 @@ def screen_scan():
             mode=WebRtcMode.SENDONLY,
             media_stream_constraints={
                 "video": {
-                    "facingMode": {"ideal": "environment"}  # intenta usar cámara trasera en móvil
+                    "width": {"ideal": 1280},   # pedimos un poco más de resolución
+                    "height": {"ideal": 720},
+                    "facingMode": {"ideal": "environment"},  # cámara trasera
                 },
                 "audio": False,
             },
             video_processor_factory=LiveBarcodeProcessor,
             async_processing=True,
         )
+
     
         # Si el procesador está activo, revisamos si detectó un código nuevo
         if webrtc_ctx and webrtc_ctx.video_processor:
@@ -1158,6 +1232,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
