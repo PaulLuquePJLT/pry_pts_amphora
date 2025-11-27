@@ -57,10 +57,10 @@ st.markdown("""
 
     .header-bar {
         background-color: #0078d4;
-        padding: 0.8rem 1rem;
+        padding: 0.6rem 0.9rem;
         color: white;
         border-radius: 5px;
-        margin-bottom: 14px;
+        margin-bottom: 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -68,7 +68,7 @@ st.markdown("""
     }
     .task-card {
         background-color: white;
-        padding: 16px 18px;
+        padding: 14px;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         border: 1px solid #e0e0e0;
@@ -80,7 +80,7 @@ st.markdown("""
         color: #0078d4;
     }
     .store-name {
-        font-size: 1.4rem;
+        font-size: 1.2rem;
         font-weight: bold;
         color: #333;
     }
@@ -923,6 +923,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
