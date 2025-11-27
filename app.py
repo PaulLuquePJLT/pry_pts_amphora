@@ -8,6 +8,11 @@ import msal
 from PIL import Image
 from pyzbar.pyzbar import decode
 import streamlit.components.v1 as components 
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+import av
+import cv2
+from pyzbar.pyzbar import decode as decode_barcodes
+
 
 # ==========================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -252,6 +257,33 @@ if 'show_base_table' not in st.session_state:
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
+class LiveBarcodeProcessor(VideoProcessorBase):
+    """
+    Procesa frames de la cámara en vivo y detecta códigos de barras/QR.
+    Guarda el último código detectado en self.last_code.
+    """
+    def __init__(self) -> None:
+        self.last_code = None
+
+    def recv(self, frame):
+        # Convertir frame de Streamlit a numpy (BGR)
+        img = frame.to_ndarray(format="bgr24")
+
+        # Detectar códigos
+        decoded = decode_barcodes(img)
+
+        for obj in decoded:
+            code = obj.data.decode("utf-8").strip()
+            # Guardamos solo el primero del frame
+            self.last_code = code
+
+            # (Opcional) Dibujar un recuadro verde donde se detectó el código
+            x, y, w, h = obj.rect
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        # Devolver el frame (con o sin recuadros)
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 def screen_base_table():
     st.title("Tabla Base - Resumen")
 
@@ -661,6 +693,42 @@ def screen_scan():
                 "Ingrese SKU o Código",
                 placeholder="Ej: 36710325"
             )
+            # -------- ESCÁNER EN VIVO CON CÁMARA --------
+        st.markdown("### Escanear con cámara (en vivo)")
+    
+        st.caption("Apunte la cámara al código de barras. Cuando se lea un código válido se agregará automáticamente a la lista.")
+    
+        webrtc_ctx = webrtc_streamer(
+            key="barcode-scanner-live",
+            mode=WebRtcMode.SENDONLY,
+            media_stream_constraints={
+                "video": {
+                    "facingMode": {"ideal": "environment"}  # intenta usar cámara trasera en móvil
+                },
+                "audio": False,
+            },
+            video_processor_factory=LiveBarcodeProcessor,
+            async_processing=True,
+        )
+    
+        # Si el procesador está activo, revisamos si detectó un código nuevo
+        if webrtc_ctx and webrtc_ctx.video_processor:
+            code = webrtc_ctx.video_processor.last_code
+    
+            if code:
+                # Normalizamos a texto
+                code = str(code).strip()
+    
+                # Evitar duplicados
+                if code not in st.session_state.scanned_codes:
+                    st.session_state.scanned_codes.append(code)
+                    st.success(f"Código {code} agregado desde cámara en vivo.")
+                else:
+                    st.info(f"El código {code} ya está en la lista.")
+    
+                # Reseteamos para no agregarlo en cada frame
+                webrtc_ctx.video_processor.last_code = None
+
         with col_btn:
             st.markdown("<br>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Agregar ➕")
@@ -1091,6 +1159,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
