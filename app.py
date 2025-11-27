@@ -119,24 +119,22 @@ st.markdown("""
             border-radius: 10px;
             padding: 0.6rem 0.8rem;
             display: flex;
-            align-items: center;
+            flex-direction: column;        /* 🔹 contenido en columna */
+            align-items: center;           /* 🔹 centrado horizontal */
+            justify-content: center;       /* 🔹 centrado vertical */
             box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            text-align: center;            /* 🔹 texto centrado */
         }
     
         .kv-icon {
-            font-size: 1.5rem;
-            margin-right: 0.55rem;
-        }
-    
-        .kv-text-block {
-            display: flex;
-            flex-direction: column;
+            font-size: 1.6rem;
+            margin-right: 0.25rem;
         }
     
         .kv-item-label {
             font-size: 0.8rem;
             color: #555;
-            margin-bottom: 0.1rem;
+            margin-bottom: 0.15rem;
         }
     
         .kv-item-value {
@@ -709,23 +707,19 @@ def screen_execution():
             st.text(f"{current_task['CodArtVenta']}")
             st.caption(current_task['DescArtProveedor'])
                     
-        # 🔹 Cant y Bulto en la misma fila, con caja + icono
+        # 🔹 Cant y Bulto en la misma fila, centrados
         st.markdown(
             f"""
             <div class="kv-row">
                 <div class="kv-box">
+                    <div class="kv-item-label">Cant.</div>
                     <div class="kv-icon">#️⃣</div>
-                    <div class="kv-text-block">
-                        <div class="kv-item-label">Cant.</div>
-                        <div class="kv-item-value">{current_task['CANTIDAD']}</div>
-                    </div>
+                    <div class="kv-item-value">{current_task['CANTIDAD']}</div>
                 </div>
                 <div class="kv-box">
+                    <div class="kv-item-label">Bulto</div>
                     <div class="kv-icon">📦</div>
-                    <div class="kv-text-block">
-                        <div class="kv-item-label">Bulto</div>
-                        <div class="kv-item-value">{current_task['BULTO']}</div>
-                    </div>
+                    <div class="kv-item-value">{current_task['BULTO']}</div>
                 </div>
             </div>
             """,
@@ -872,6 +866,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
