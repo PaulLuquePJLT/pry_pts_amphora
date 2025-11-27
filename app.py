@@ -118,23 +118,27 @@ st.markdown("""
             border: 1px solid #dde1f0;
             border-radius: 10px;
             padding: 0.6rem 0.8rem;
+            position: relative;              /* 🔹 para posicionar el icono */
             display: flex;
-            flex-direction: row;          /* icono + bloque de texto en fila */
-            align-items: center;          /* centrado vertical */
-            justify-content: center;      /* centrado horizontal del conjunto */
+            align-items: center;
+            justify-content: center;         /* 🔹 centramos el bloque de texto */
             box-shadow: 0 1px 2px rgba(0,0,0,0.06);
         }
     
         .kv-icon {
+            position: absolute;              /* 🔹 icono “flotante” a la izquierda */
+            left: 0.6rem;
+            top: 50%;
+            transform: translateY(-50%);
             font-size: 1.6rem;
-            margin-right: 0.6rem;
         }
-            /* Bloque de textos (label + número) */
+        /* Bloque de textos (label + número) */
         .kv-text-block {
-        display: flex;
-        flex-direction: column;
-        align-items: center;          /* centra label y número dentro del bloque */
-        text-align: center;
+            width: 100%;                     /* 🔹 bloque ocupa todo el ancho */
+            display: flex;
+            flex-direction: column;
+            align-items: center;             /* 🔹 centrado horizontal */
+            text-align: center;
         }
         .kv-item-label {
             font-size: 0.8rem;
@@ -874,6 +878,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
