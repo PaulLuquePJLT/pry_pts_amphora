@@ -775,11 +775,10 @@ def screen_execution():
             if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
                 st.session_state.processed_ids.append(current_task['ID'])
                 st.session_state.current_task_index += 1
-                # Guardar ID procesado
-                st.session_state.processed_ids.append(current_task['ID'])
-                # Avanzar
-                st.session_state.current_task_index += 1
-
+        
+                # 👇 Indicamos que en el próximo render queremos subir el scroll
+                st.session_state.scroll_to_top = True
+        
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
@@ -788,6 +787,7 @@ def screen_execution():
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
+
 
         with col_cancel:
             if st.button(
@@ -894,6 +894,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
