@@ -7,7 +7,7 @@ import requests
 import msal
 from PIL import Image
 from pyzbar.pyzbar import decode
-
+import streamlit.components.v1 as components
 
 # ==========================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -239,10 +239,24 @@ if 'onedrive_files' not in st.session_state:
 if 'show_camera' not in st.session_state:
     st.session_state.show_camera = False
 
+if 'scroll_to_top' not in st.session_state:
+    st.session_state.scroll_to_top = False
+
 
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
+def scroll_to_top():
+    """Inyecta JS para mover el scroll al inicio de la página."""
+    components.html(
+        """
+        <script>
+        window.scrollTo({top: 0, left: 0, behavior: 'smooth'});
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
 
 def generate_mock_data():
     data = []
@@ -678,6 +692,11 @@ def screen_execution():
     tasks = st.session_state.session_tasks
     idx = st.session_state.current_task_index
     total = len(tasks)
+    
+    # 👇 Si está marcado, subimos el scroll y apagamos el flag
+    if st.session_state.get('scroll_to_top', False):
+        scroll_to_top()
+        st.session_state.scroll_to_top = False
 
     if idx >= total:
         st.warning("Índice fuera de rango. Redirigiendo...")
@@ -753,16 +772,13 @@ def screen_execution():
         # Botones dentro de la tarjeta, así quedan más arriba en móvil
         col_confirm, col_cancel = st.columns([3, 1])
         with col_confirm:
-            if st.button(
-                "CONFIRMAR ✅",
-                type="primary",
-                use_container_width=True,
-                key=f"btn_conf_{current_task['ID']}"
-            ):
-                # Guardar ID procesado
-                st.session_state.processed_ids.append(current_task['ID'])
-                # Avanzar
-                st.session_state.current_task_index += 1
+            if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
+            st.session_state.processed_ids.append(current_task['ID'])
+            st.session_state.current_task_index += 1
+            # Guardar ID procesado
+            st.session_state.processed_ids.append(current_task['ID'])
+            # Avanzar
+            st.session_state.current_task_index += 1
 
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
@@ -878,6 +894,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
