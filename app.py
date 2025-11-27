@@ -720,16 +720,23 @@ def screen_scan():
 # --- FASE C: EJECUCIÓN (PTS) ---
 def screen_execution():
     tasks = st.session_state.session_tasks
+
+    # Por seguridad, si no hay tareas cargadas
+    if tasks.empty:
+        st.error("No hay tareas cargadas en la sesión.")
+        if st.button("Volver a escanear códigos"):
+            navigate_to('screen_scan')
+        return
+
     idx = st.session_state.current_task_index
     total = len(tasks)
-    
-    # 👇 Si está marcado, subimos el scroll y apagamos el flag
+
+    # 👇 Si está marcado, intentamos subir el scroll y apagamos el flag
     if st.session_state.get('scroll_to_top', False):
         scroll_to_top()
         st.session_state.scroll_to_top = False
 
     if idx >= total:
-        st.warning("Índice fuera de rango. Redirigiendo...")
         navigate_to('screen_audit_main')
         return
 
@@ -739,31 +746,31 @@ def screen_execution():
     with st.container():
         st.markdown('<div class="task-card">', unsafe_allow_html=True)
 
-        # Fila superior: ID + progreso "Tarea x de y"
-        col_top1, col_top2 = st.columns([2.5, 1])
-        with col_top1:
-            st.caption(f"ID Base: {current_task['ID']}")
-            st.markdown(
-                f"<div class='store-name'>{current_task['CodSucDestino']} - "
-                f"{current_task['SucDestino']}</div>",
-                unsafe_allow_html=True
-            )
-        with col_top2:
-            st.markdown(
-                f"<div style='text-align:right; font-size:0.8rem; color:#555;'>"
-                f"Tarea {idx + 1} de {total}</div>",
-                unsafe_allow_html=True
-            )
+        # Encabezado: ID + tienda + progreso "Tarea x de y"
+        st.markdown(
+            f"""
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.35rem;">
+                <div>
+                    <div style="font-size:0.75rem; color:#777;">ID Base: {current_task['ID']}</div>
+                    <div class="store-name">
+                        {current_task['CodSucDestino']} - {current_task['SucDestino']}
+                    </div>
+                </div>
+                <div style="font-size:0.80rem; color:#555;">
+                    Tarea {idx + 1} de {total}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        st.markdown("---")
+        st.markdown("<hr style='margin:0.4rem 0 0.35rem 0;'>", unsafe_allow_html=True)
 
-        # Detalle de producto + métricas en 2 columnas
-        col_det1, col_det2 = st.columns([2, 1])
-        with col_det1:
-            st.markdown("**Producto / Cod. Venta**")
-            st.text(f"{current_task['CodArtVenta']}")
-            st.caption(current_task['DescArtProveedor'])
-                    
+        # Detalle de producto
+        st.markdown("**Producto / Cod. Venta**")
+        st.text(str(current_task['CodArtVenta']))
+        st.caption(str(current_task['DescArtProveedor']))
+
         # 🔹 Cant y Bulto en la misma fila, con icono a la izquierda
         st.markdown(
             f"""
@@ -787,28 +794,39 @@ def screen_execution():
             unsafe_allow_html=True
         )
 
-        st.markdown("---")
-        
+        st.markdown("<hr style='margin:0.5rem 0 0.4rem 0;'>", unsafe_allow_html=True)
 
         # Datos logísticos
-        st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
+        st.markdown(
+            f"**LPN Teórico:** "
+            f"<span style='background:#e9f7ec; color:#17833b; padding:2px 6px; "
+            f"border-radius:4px; font-size:0.85rem;'>{current_task['LPNs']}</span>",
+            unsafe_allow_html=True,
+        )
+
+        # Guía: label en pequeño + input con label colapsada (ahorra altura)
+        st.caption("Guía (Opcional)")
         st.text_input(
-            "Guía (Opcional)",
+            "",
             key=f"guia_{current_task['ID']}",
-            label_visibility="visible",
+            label_visibility="collapsed",
             placeholder="Escanee guía si aplica..."
         )
 
-        # Botones dentro de la tarjeta, así quedan más arriba en móvil
-        col_confirm, col_cancel = st.columns([3, 1])
+        st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+
+        # Botones dentro de la tarjeta, para quedar más arriba en móvil
+        col_confirm, col_cancel = st.columns([2, 1])
+
         with col_confirm:
             if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
+                # Guardar ID procesado y avanzar
                 st.session_state.processed_ids.append(current_task['ID'])
                 st.session_state.current_task_index += 1
-        
-                # 👈 marcamos que la próxima vez queremos subir el scroll
+
+                # 👉 marcamos que la próxima vez queremos subir el scroll
                 st.session_state.scroll_to_top = True
-        
+
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
@@ -830,7 +848,8 @@ def screen_execution():
                     st.warning("Presione de nuevo para confirmar cancelación")
                     st.session_state.confirm_cancel = True
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)  # cierre task-card
+
 
 
 
@@ -923,6 +942,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
