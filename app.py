@@ -769,7 +769,7 @@ def screen_scan():
             else:
                 st.session_state.scanned_codes.append(code_input)
                 st.success(f"Código {code_input} agregado.")
-            )
+            
     # ---------- ESCÁNER EN VIVO ----------
     st.caption(
         "Apunte el código dentro del recuadro. "
@@ -1253,6 +1253,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
