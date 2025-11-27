@@ -747,37 +747,42 @@ def screen_file_selection():
 # --- FASE B: ESCANEO ---
 def screen_scan():
     # ------------------------------------------------------------------
-    # TÍTULO + BOTÓN PARA VER TABLA BASE
+    # CABECERA: Título + botón "Ver tabla base" en la MISMA fila
     # ------------------------------------------------------------------
-    col_title, col_btn_table = st.columns([3, 1])
-    with col_title:
-        st.title("Escanear Códigos")
-    with col_btn_table:
-        if st.button("Ver tabla base 📊", key="btn_ver_tabla_base"):
+    header_col1, header_col2 = st.columns([3, 1])
+
+    with header_col1:
+        # Título un poco más compacto que st.title
+        st.subheader("Escanear Códigos")
+
+    with header_col2:
+        if st.button(
+            "Ver tabla base 📊",
+            key="btn_ver_tabla_base",
+            use_container_width=True,
+        ):
             navigate_to("screen_base_table")
             return  # salimos de esta vista
 
-    st.write("")
+    st.write("")  # pequeño espacio
 
     # ------------------------------------------------------------------
-    # 1) FORMULARIO DE ENTRADA MANUAL
+    # 1) FORMULARIO DE ENTRADA MANUAL (input + botón en la misma fila)
     # ------------------------------------------------------------------
     with st.form("scan_form_manual", clear_on_submit=True):
-        col_in, col_btn = st.columns([3, 1])
+        col_in, col_btn = st.columns([4, 1])
 
-        with col_in:
-            code_input = st.text_input(
-                "Ingrese SKU o Código",
-                placeholder="Ej: 36710325",
-                key="txt_manual_code",
-            )
+        code_input = col_in.text_input(
+            "Ingrese SKU o Código",
+            placeholder="Ej: 36710325",
+            key="txt_manual_code",
+        )
 
-        with col_btn:
-            st.markdown("<br>", unsafe_allow_html=True)
-            submitted = st.form_submit_button(
-                "Agregar ➕",
-                key="btn_add_manual_code",
-            )
+        # 👇 importante: usamos form_submit_button DESDE LA COLUMNA
+        submitted = col_btn.form_submit_button(
+            "Agregar ➕",
+            use_container_width=True,
+        )
 
         if submitted and code_input:
             code_input = str(code_input).strip()
@@ -802,7 +807,7 @@ def screen_scan():
         video_processor_factory=LiveBarcodeProcessor,
         media_stream_constraints={
             "video": {
-                # 👇 pide explícitamente la cámara trasera
+                # 👇 intenta siempre usar la cámara trasera
                 "facingMode": {"ideal": "environment"}
             },
             "audio": False,
@@ -825,8 +830,24 @@ def screen_scan():
             else:
                 st.info(f"El código {detected_code} ya está en la lista.")
 
+            # limpiamos para no reutilizarlo en el siguiente frame
             if webrtc_ctx and webrtc_ctx.video_processor:
                 webrtc_ctx.video_processor.last_code = None
+
+    # ------------------------------------------------------------------
+    # 3) BOTÓN DEMO
+    # ------------------------------------------------------------------
+    if st.button("Simular Escaneo (Demo)", key="btn_demo_scan"):
+        demo_codes = ["SKU-101", "36710325"]
+        any_new = False
+        for d in demo_codes:
+            if d not in st.session_state.scanned_codes:
+                st.session_state.scanned_codes.append(d)
+                any_new = True
+        if any_new:
+            st.success("Se agregaron códigos de demostración.")
+        else:
+            st.info("Los códigos de demo ya estaban en la lista.")
 
     # ------------------------------------------------------------------
     # 4) LISTA DE CÓDIGOS EN SESIÓN
@@ -866,13 +887,11 @@ def screen_scan():
             st.error("No hay datos cargados. Vuelva a **Seleccionar Archivo Base**.")
             return
 
-        # Aseguramos índice limpio 0..n-1 en la tabla base
         base_df = st.session_state.file_data.reset_index(drop=True)
         st.session_state.file_data = base_df  # guardamos de vuelta
 
         df = base_df.copy()
         df["CodArtVenta"] = df["CodArtVenta"].astype(str)
-
         scanned = [str(c).strip() for c in st.session_state.scanned_codes]
 
         mask = (df["CodArtVenta"].isin(scanned)) & (df["Estado_Sys"] == "Pendiente")
@@ -881,9 +900,8 @@ def screen_scan():
         if tasks.empty:
             st.warning("No se encontraron tareas pendientes para estos códigos.")
         else:
-            # Guardamos el índice original de base_df como identificador único
-            tasks["_row_index"] = tasks.index  # índice de la tabla base
-            # Reset index solo para la vista, _row_index conserva el índice real
+            # guardamos el índice real como identificador único
+            tasks["_row_index"] = tasks.index
             st.session_state.session_tasks = tasks.reset_index(drop=True)
             st.session_state.current_task_index = 0
             st.session_state.processed_ids = []
@@ -1154,6 +1172,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
