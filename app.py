@@ -228,6 +228,9 @@ if 'current_task_index' not in st.session_state:
 
 if 'processed_ids' not in st.session_state:
     st.session_state.processed_ids = []
+    
+if 'processed_original_indices' not in st.session_state:
+    st.session_state.processed_original_indices = []
 
 # token y archivos de OneDrive en sesión
 if 'graph_token' not in st.session_state:
@@ -404,6 +407,7 @@ def reset_session():
     st.session_state.session_tasks = pd.DataFrame()
     st.session_state.current_task_index = 0
     st.session_state.processed_ids = []
+    st.session_state.processed_original_indices = []
     navigate_to('screen_scan')
 
 
@@ -751,14 +755,17 @@ def screen_scan():
 
             # 🔹 Normalizamos tipos y espacios
             codigos_scan = [str(c).strip() for c in st.session_state.scanned_codes]
-
+            
             col_cod = full_df['CodArtVenta'].astype(str).str.strip()
             col_estado = full_df['Estado_Sys'].astype(str).str.strip()
-
+            
+            # 🔹 Hacemos copy y guardamos el índice original de la tabla base
             tasks = full_df[
                 (col_cod.isin(codigos_scan)) &
                 (col_estado == 'Pendiente')
-            ]
+            ].copy()
+
+            tasks['__original_index__'] = tasks.index
 
             if tasks.empty:
                 st.warning("No se encontraron tareas pendientes para estos códigos.")
@@ -766,6 +773,7 @@ def screen_scan():
                 st.session_state.session_tasks = tasks.reset_index(drop=True)
                 st.session_state.current_task_index = 0
                 st.session_state.processed_ids = []
+                st.session_state.processed_original_indices = []
                 st.success(f"Se cargaron {len(tasks)} tareas.")
                 time.sleep(1)
                 navigate_to('screen_execution')
@@ -976,13 +984,19 @@ def screen_execution():
 
         with col_confirm:
             if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
-                # Guardar ID procesado y avanzar
+                # Guardamos ID solo como referencia (opcional)
                 st.session_state.processed_ids.append(current_task['ID'])
+        
+                # 🔹 Guardamos el índice original de la tabla base
+                if '__original_index__' in current_task:
+                    orig_idx = int(current_task['__original_index__'])
+                    if orig_idx not in st.session_state.processed_original_indices:
+                        st.session_state.processed_original_indices.append(orig_idx)
+        
+                # Avanzamos a la siguiente tarea
                 st.session_state.current_task_index += 1
-
-                # 👉 marcamos que la próxima vez queremos subir el scroll
                 st.session_state.scroll_to_top = True
-
+        
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
@@ -991,6 +1005,7 @@ def screen_execution():
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
+
 
         with col_cancel:
             if st.button(
@@ -1086,12 +1101,16 @@ def screen_audit_details():
 
 
 def finish_batch_process():
-    """Cierra el lote marcando los IDs procesados como 'Completado'."""
-    main_df = st.session_state.file_data
-    processed = st.session_state.processed_ids
-    
-    main_df.loc[main_df['ID'].isin(processed), 'Estado_Sys'] = 'Completado'
+    """Marca como 'Completado' solo las filas trabajadas en la tabla base."""
+    main_df = st.session_state.file_data.copy()
+
+    processed_idx = st.session_state.get('processed_original_indices', [])
+
+    if processed_idx:
+        main_df.loc[processed_idx, 'Estado_Sys'] = 'Completado'
+
     st.session_state.file_data = main_df
+
 
 
 # ==========================================
@@ -1114,6 +1133,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
