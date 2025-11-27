@@ -567,12 +567,6 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
     else:
         df['Estado_Sys'] = df['Estado_Sys'].fillna('Pendiente')
 
-    # Validar LPNs
-    invalid_lpns = df[~df['LPNs'].astype(str).str.startswith('NA')]
-    if not invalid_lpns.empty:
-        st.error("❌ Error: Se encontraron LPNs que no inician con 'NA'.")
-        return
-
     # Si todo bien, guardamos
     st.session_state.file_data = df
     st.success(f"✅ {source_name} válido. {len(df)} registros cargados.")
@@ -1132,6 +1126,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
