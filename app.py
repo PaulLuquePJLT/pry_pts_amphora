@@ -883,31 +883,45 @@ def screen_audit_details():
     if st.button("⬅️ Atrás"):
         navigate_to('screen_audit_main')
 
+    # Tareas trabajadas en la sesión
     processed_tasks = st.session_state.session_tasks
-    unique_codes = processed_tasks['CodArtVenta'].unique()
-    selected_code = st.selectbox("Seleccione código con sobrante:", unique_codes)
-    
-    if selected_code:
-        sku_data = processed_tasks[processed_tasks['CodArtVenta'] == selected_code]
-        summary = sku_data.groupby(['CodSucDestino', 'SucDestino'])['CANTIDAD'].sum().reset_index()
-        
-        # 🔹 Forzamos a texto para evitar errores de numpy/pandas
+
+    # 👉 ahora por CodArtVenta (antes era CodArtRipley)
+    unique_skus = processed_tasks['CodArtVenta'].unique()
+    selected_sku = st.selectbox("Seleccione código con sobrante:", unique_skus)
+
+    if selected_sku:
+        # Filtrar por el código seleccionado
+        sku_data = processed_tasks[processed_tasks['CodArtVenta'] == selected_sku]
+
+        # 🔹 Agrupar por sucursal Y por bulto
+        summary = (
+            sku_data
+            .groupby(['CodSucDestino', 'SucDestino', 'BULTO'])['CANTIDAD']
+            .sum()
+            .reset_index()
+        )
+
+        # Construimos texto de sucursal como string (evita errores de tipos)
         summary['Sucursal'] = (
             summary['CodSucDestino'].astype(str).fillna("") + " - " +
             summary['SucDestino'].astype(str).fillna("")
         )
-  
-        st.subheader("Resumen por Tienda")
+
+        # Ordenar un poco la tabla (opcional)
+        summary = summary.sort_values(['CodSucDestino', 'BULTO'])
+
+        st.subheader("Resumen por Tienda y Bulto")
         st.dataframe(
-            summary[['Sucursal', 'CANTIDAD']], 
-            hide_index=True, 
+            summary[['Sucursal', 'BULTO', 'CANTIDAD']],
+            hide_index=True,
             use_container_width=True
         )
-        
-        st.info("ℹ️ Use esta información para validar físicamente dónde ocurrió el error.")
-        
+
+        st.info("ℹ️ Use esta información para validar físicamente sobrantes por tienda y bulto.")
+
         st.markdown("---")
-        
+
         if st.button("Confirmar Regularización 🔴", type="primary"):
             finish_batch_process()
             st.success("Regularización guardada y lote cerrado.")
@@ -942,6 +956,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
