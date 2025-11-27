@@ -5,6 +5,6 @@ pillow
 pyzbar
 requests
 msal
-streamlit.components.v1
+
 
 
