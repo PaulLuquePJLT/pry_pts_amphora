@@ -749,9 +749,15 @@ def screen_scan():
                 st.error("No hay datos cargados. Vuelva al inicio.")
                 return
 
+            # 🔹 Normalizamos tipos y espacios
+            codigos_scan = [str(c).strip() for c in st.session_state.scanned_codes]
+
+            col_cod = full_df['CodArtVenta'].astype(str).str.strip()
+            col_estado = full_df['Estado_Sys'].astype(str).str.strip()
+
             tasks = full_df[
-                (full_df['CodArtVenta'].isin(st.session_state.scanned_codes)) &
-                (full_df['Estado_Sys'] == 'Pendiente')
+                (col_cod.isin(codigos_scan)) &
+                (col_estado == 'Pendiente')
             ]
 
             if tasks.empty:
@@ -763,6 +769,7 @@ def screen_scan():
                 st.success(f"Se cargaron {len(tasks)} tareas.")
                 time.sleep(1)
                 navigate_to('screen_execution')
+
 
     # =========================
     # 2) Escaneo con cámara
@@ -1107,6 +1114,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
