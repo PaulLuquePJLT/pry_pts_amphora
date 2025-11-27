@@ -116,7 +116,7 @@ st.markdown("""
             margin-bottom: 0.2rem;
         }
         .kv-item-value {
-            font-size: 4rem;
+            font-size: 3rem;
             font-weight: 600;
             color: #0078d4;
         }
@@ -840,6 +840,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
