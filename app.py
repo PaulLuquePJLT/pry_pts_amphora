@@ -749,45 +749,60 @@ def screen_scan():
     st.title("Escanear Códigos")
 
     # --- Formulario para agregar códigos manualmente ---
+    # ---------- FORMULARIO DE ENTRADA MANUAL ----------
     with st.form("scan_form", clear_on_submit=True):
         col_in, col_btn = st.columns([3, 1])
+
         with col_in:
             code_input = st.text_input(
                 "Ingrese SKU o Código",
-                placeholder="Ej: 36710325"
+                placeholder="Ej: 36710325",
             )
-            # -------- ESCÁNER EN VIVO CON CÁMARA --------
-    
+
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Agregar ➕")  # 👈 IMPORTANTE
+
+        if submitted and code_input:
+            if code_input in st.session_state.scanned_codes:
+                st.warning(f"⚠️ El código {code_input} ya está en la lista.")
+            else:
+                st.session_state.scanned_codes.append(code_input)
+                st.success(f"Código {code_input} agregado.")
+            )
+    # ---------- ESCÁNER EN VIVO ----------
     st.caption(
-        "Apunte la cámara al código de barras dentro del recuadro. "
-        "Si la cámara en vivo no se conecta, use el escaneo por foto."
+        "Apunte el código dentro del recuadro. "
+        "Cuando lo tenga enfocado, pulse 'Validar código detectado' para agregarlo a la lista."
     )
 
     webrtc_ctx = webrtc_streamer(
         key="barcode-scanner-live",
         video_processor_factory=LiveBarcodeProcessor,
-        media_stream_constraints={
-            "video": True,
-            "audio": False,
-        },
+        media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
     )
 
+    # Leemos el último código que la cámara haya detectado (puede ser None)
+    detected_code = None
     if webrtc_ctx and webrtc_ctx.video_processor:
-        code = webrtc_ctx.video_processor.last_code
+        detected_code = webrtc_ctx.video_processor.last_code
 
-        if code:
-            code = str(code).strip()
-
-            if code not in st.session_state.scanned_codes:
-                st.session_state.scanned_codes.append(code)
-                st.success(f"Código {code} agregado desde cámara en vivo.")
+    # Botón para confirmar el código leído por la cámara
+    if st.button("Validar código detectado ✅", key="btn_use_camera_code"):
+        if not detected_code:
+            st.warning("Todavía no se ha detectado ningún código en la cámara.")
+        else:
+            detected_code = str(detected_code).strip()
+            if detected_code not in st.session_state.scanned_codes:
+                st.session_state.scanned_codes.append(detected_code)
+                st.success(f"Código {detected_code} agregado desde la cámara.")
             else:
-                st.info(f"El código {code} ya está en la lista.")
+                st.info(f"El código {detected_code} ya está en la lista.")
 
-            webrtc_ctx.video_processor.last_code = None
-
-
+            # Opcional: limpiar el último código del procesador
+            if webrtc_ctx and webrtc_ctx.video_processor:
+                webrtc_ctx.video_processor.last_code = None
 
     
         # Si el procesador está activo, revisamos si detectó un código nuevo
@@ -1238,6 +1253,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
