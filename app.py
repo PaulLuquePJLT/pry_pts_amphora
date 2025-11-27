@@ -7,7 +7,7 @@ import requests
 import msal
 from PIL import Image
 from pyzbar.pyzbar import decode
-import streamlit.components.v1 as components
+
 
 # ==========================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -247,16 +247,30 @@ if 'scroll_to_top' not in st.session_state:
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
 def scroll_to_top():
-    """Inyecta JS para mover el scroll al inicio de la página."""
-    components.html(
+    """Sube el scroll al inicio de la app (incluyendo vista móvil)."""
+    st.markdown(
         """
         <script>
-        window.scrollTo({top: 0, left: 0, behavior: 'smooth'});
+        (function() {
+            // Intentamos primero con el contenedor principal de Streamlit
+            try {
+                const parentWindow = window.parent || window;
+                const mainSection = parentWindow.document.querySelector('section.main');
+                if (mainSection) {
+                    mainSection.scrollTo({top: 0, left: 0, behavior: 'instant'});
+                } else {
+                    parentWindow.scrollTo({top: 0, left: 0, behavior: 'instant'});
+                }
+            } catch (e) {
+                // Fallback simple
+                window.scrollTo(0, 0);
+            }
+        })();
         </script>
         """,
-        height=0,
-        scrolling=False,
+        unsafe_allow_html=True,
     )
+
 
 def generate_mock_data():
     data = []
@@ -776,7 +790,7 @@ def screen_execution():
                 st.session_state.processed_ids.append(current_task['ID'])
                 st.session_state.current_task_index += 1
         
-                # 👇 Indicamos que en el próximo render queremos subir el scroll
+                # 👇 marcamos que en la próxima corrida hay que subir el scroll
                 st.session_state.scroll_to_top = True
         
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
@@ -787,6 +801,7 @@ def screen_execution():
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
+
 
 
         with col_cancel:
@@ -894,6 +909,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
