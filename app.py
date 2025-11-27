@@ -241,6 +241,9 @@ if 'show_camera' not in st.session_state:
 
 if 'scroll_to_top' not in st.session_state:
     st.session_state.scroll_to_top = False
+    
+if 'show_base_table' not in st.session_state:
+    st.session_state.show_base_table = False
 
 
 # ==========================================
@@ -591,9 +594,7 @@ def screen_file_selection():
 def screen_scan():
     st.title("Escanear Códigos")
 
-    # =========================
-    # 1) Entrada manual
-    # =========================
+    # --- Formulario para agregar códigos manualmente ---
     with st.form("scan_form", clear_on_submit=True):
         col_in, col_btn = st.columns([3, 1])
         with col_in:
@@ -606,14 +607,104 @@ def screen_scan():
             submitted = st.form_submit_button("Agregar ➕")
 
         if submitted and code_input:
-            code_input = code_input.strip()
-            if not code_input:
-                st.warning("Ingrese un código válido.")
-            elif code_input in st.session_state.scanned_codes:
-                st.warning(f"⚠️ El código {code_input} ya está en la lista.")
+            if code_input in st.session_state.scanned_codes:
+                st.warning("⚠️ Este código ya está en la lista.")
             else:
                 st.session_state.scanned_codes.append(code_input)
                 st.success(f"Código {code_input} agregado.")
+
+    # --- Botón Demo ---
+    if st.button("Simular Escaneo (Demo)"):
+        demos = ['SKU-101', '36710325']
+        for d in demos:
+            if d not in st.session_state.scanned_codes:
+                st.session_state.scanned_codes.append(d)
+        st.rerun()
+
+    # --- Códigos en sesión ---
+    st.subheader(f"Códigos en sesión ({len(st.session_state.scanned_codes)})")
+
+    if st.session_state.scanned_codes:
+        st.table(pd.DataFrame(st.session_state.scanned_codes, columns=["Código"]))
+        if st.button("Limpiar lista", type="primary"):
+            st.session_state.scanned_codes = []
+            st.rerun()
+    else:
+        st.info("No hay códigos escaneados.")
+
+    st.divider()
+
+    # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
+    col_tbl_btn, _ = st.columns([2, 1])
+    with col_tbl_btn:
+        if st.button("Ver Tabla Base 📊", use_container_width=True):
+            # Toggle: si estaba visible, la oculta; si no, la muestra
+            st.session_state.show_base_table = not st.session_state.show_base_table
+            st.rerun()
+
+    if st.session_state.show_base_table:
+        base_df = st.session_state.file_data
+
+        st.subheader("Tabla Base Cargada")
+
+        if base_df.empty:
+            st.warning("No hay tabla base cargada. Vuelva a **Seleccionar Archivo Base**.")
+        else:
+            # Opciones de filtro por Estado_Sys
+            estados_unicos = (
+                base_df['Estado_Sys']
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+            estados_unicos = sorted(estados_unicos)
+            opciones = ["Todos"] + estados_unicos
+
+            estado_sel = st.selectbox(
+                "Filtrar por Estado_Sys:",
+                opciones,
+                index=0,
+                key="filtro_estado_sys"
+            )
+
+            if estado_sel == "Todos":
+                df_mostrar = base_df
+            else:
+                df_mostrar = base_df[base_df['Estado_Sys'].astype(str) == estado_sel]
+
+            st.dataframe(
+                df_mostrar,
+                hide_index=True,
+                use_container_width=True
+            )
+
+        st.divider()  # pequeña separación antes del botón Cargar Tareas
+
+    # --- Cargar Tareas ---
+    if st.button("Cargar Tareas ➡️", type="primary", use_container_width=True):
+        if not st.session_state.scanned_codes:
+            st.error("Debe agregar al menos un código.")
+        else:
+            full_df = st.session_state.file_data
+            if full_df.empty:
+                st.error("No hay datos cargados. Vuelva al inicio.")
+                return
+
+            tasks = full_df[
+                (full_df['CodArtVenta'].isin(st.session_state.scanned_codes)) &
+                (full_df['Estado_Sys'] == 'Pendiente')
+            ]
+
+            if tasks.empty:
+                st.warning("No se encontraron tareas pendientes para estos códigos.")
+            else:
+                st.session_state.session_tasks = tasks.reset_index(drop=True)
+                st.session_state.current_task_index = 0
+                st.session_state.processed_ids = []
+                st.success(f"Se cargaron {len(tasks)} tareas.")
+                time.sleep(1)
+                navigate_to('screen_execution')
 
     # =========================
     # 2) Escaneo con cámara
@@ -956,6 +1047,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
