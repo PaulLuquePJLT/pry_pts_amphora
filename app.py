@@ -746,34 +746,55 @@ def screen_file_selection():
 
 # --- FASE B: ESCANEO ---
 def screen_scan():
-    st.title("Escanear Códigos")
+    # ------------------------------------------------------------------
+    # TÍTULO + BOTÓN PARA VER TABLA BASE
+    # ------------------------------------------------------------------
+    col_title, col_btn_table = st.columns([3, 1])
+    with col_title:
+        st.title("Escanear Códigos")
+    with col_btn_table:
+        if st.button("Ver tabla base 📊", key="btn_ver_tabla_base"):
+            navigate_to("screen_base_table")
+            return  # salimos de la vista actual
 
-    # --- Formulario para agregar códigos manualmente ---
-    # ---------- FORMULARIO DE ENTRADA MANUAL ----------
-    with st.form("scan_form", clear_on_submit=True):
+    st.write("")  # pequeño espacio
+
+    # ------------------------------------------------------------------
+    # 1) FORMULARIO DE ENTRADA MANUAL
+    # ------------------------------------------------------------------
+    with st.form("scan_form_manual", clear_on_submit=True):
         col_in, col_btn = st.columns([3, 1])
 
         with col_in:
             code_input = st.text_input(
                 "Ingrese SKU o Código",
                 placeholder="Ej: 36710325",
+                key="txt_manual_code",
             )
 
         with col_btn:
             st.markdown("<br>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Agregar ➕")  # 👈 IMPORTANTE
+            submitted = st.form_submit_button(
+                "Agregar ➕",
+                key="btn_add_manual_code",
+            )
 
         if submitted and code_input:
+            code_input = str(code_input).strip()
             if code_input in st.session_state.scanned_codes:
                 st.warning(f"⚠️ El código {code_input} ya está en la lista.")
             else:
                 st.session_state.scanned_codes.append(code_input)
                 st.success(f"Código {code_input} agregado.")
-            
-    # ---------- ESCÁNER EN VIVO ----------
+
+    # ------------------------------------------------------------------
+    # 2) ESCÁNER EN VIVO CON CÁMARA
+    # ------------------------------------------------------------------
+    st.markdown("### Escanear con cámara (en vivo)")
     st.caption(
         "Apunte el código dentro del recuadro. "
-        "Cuando lo tenga enfocado, pulse 'Validar código detectado' para agregarlo a la lista."
+        "Cuando lo tenga enfocado, pulse **'Validar código detectado'** "
+        "para agregarlo a la lista."
     )
 
     webrtc_ctx = webrtc_streamer(
@@ -783,7 +804,7 @@ def screen_scan():
         async_processing=True,
     )
 
-    # Leemos el último código que la cámara haya detectado (puede ser None)
+    # Último código leído por la cámara (puede ser None)
     detected_code = None
     if webrtc_ctx and webrtc_ctx.video_processor:
         detected_code = webrtc_ctx.video_processor.last_code
@@ -800,103 +821,87 @@ def screen_scan():
             else:
                 st.info(f"El código {detected_code} ya está en la lista.")
 
-            # Opcional: limpiar el último código del procesador
+            # Limpiamos el último código del procesador para no repetir
             if webrtc_ctx and webrtc_ctx.video_processor:
                 webrtc_ctx.video_processor.last_code = None
 
-    
-        # Si el procesador está activo, revisamos si detectó un código nuevo
-        if webrtc_ctx and webrtc_ctx.video_processor:
-            code = webrtc_ctx.video_processor.last_code
-    
-            if code:
-                # Normalizamos a texto
-                code = str(code).strip()
-    
-                # Evitar duplicados
-                if code not in st.session_state.scanned_codes:
-                    st.session_state.scanned_codes.append(code)
-                    st.success(f"Código {code} agregado desde cámara en vivo.")
-                else:
-                    st.info(f"El código {code} ya está en la lista.")
-    
-                # Reseteamos para no agregarlo en cada frame
-                webrtc_ctx.video_processor.last_code = None
-
-        with col_btn:
-            st.markdown("<br>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Agregar ➕")
-
-        if submitted and code_input:
-            if code_input in st.session_state.scanned_codes:
-                st.warning("⚠️ Este código ya está en la lista.")
-            else:
-                st.session_state.scanned_codes.append(code_input)
-                st.success(f"Código {code_input} agregado.")
-
-    # --- Botón Demo ---
+    # ------------------------------------------------------------------
+    # 3) BOTÓN DEMO
+    # ------------------------------------------------------------------
     if st.button("Simular Escaneo (Demo)", key="btn_demo_scan"):
-        demos = ['SKU-101', '36710325']
+        demos = ["SKU-101", "36710325"]  # ajusta si quieres
+        any_new = False
         for d in demos:
             if d not in st.session_state.scanned_codes:
                 st.session_state.scanned_codes.append(d)
-        st.rerun()
+                any_new = True
+        if any_new:
+            st.success("Se agregaron códigos de demostración.")
+        else:
+            st.info("Los códigos de demo ya estaban en la lista.")
 
-    # --- Códigos en sesión ---
+    # ------------------------------------------------------------------
+    # 4) LISTA DE CÓDIGOS EN SESIÓN
+    # ------------------------------------------------------------------
     st.subheader(f"Códigos en sesión ({len(st.session_state.scanned_codes)})")
 
     if st.session_state.scanned_codes:
-        st.table(pd.DataFrame(st.session_state.scanned_codes, columns=["Código"]))
-        if st.button("Limpiar lista", type="primary", key="btn_limpiar_lista"):
+        st.table(
+            pd.DataFrame(st.session_state.scanned_codes, columns=["Código"])
+        )
+
+        if st.button(
+            "Limpiar lista",
+            type="primary",
+            key="btn_limpiar_lista",
+        ):
             st.session_state.scanned_codes = []
+            st.success("Lista de códigos limpiada.")
             st.rerun()
     else:
         st.info("No hay códigos escaneados.")
 
     st.divider()
 
-    # --- NUEVO: Ver Tabla Base con filtro por Estado_Sys ---
-    col_tbl_btn, _ = st.columns([2, 1])
-    with col_tbl_btn:
-        if st.button("Ver Tabla Base 📊", use_container_width=True, key="btn_ver_tabla_base"):
-            navigate_to('screen_base_table')
+    # ------------------------------------------------------------------
+    # 5) CARGAR TAREAS
+    # ------------------------------------------------------------------
+    if st.button(
+        "Cargar Tareas ➡️",
+        type="primary",
+        use_container_width=True,
+        key="btn_cargar_tareas",
+    ):
+        if not st.session_state.scanned_codes:
+            st.error("Debe agregar al menos un código.")
+            return
 
-    if st.session_state.show_base_table:
-        base_df = st.session_state.file_data
-        st.subheader("Tabla Base Cargada")
+        full_df = st.session_state.file_data
+        if full_df.empty:
+            st.error("No hay datos cargados. Vuelva a **Seleccionar Archivo Base**.")
+            return
 
-        if base_df.empty:
-            st.warning("No hay tabla base cargada. Vuelva a **Seleccionar Archivo Base**.")
+        # Aseguramos que CodArtVenta sea texto
+        df = full_df.copy()
+        df["CodArtVenta"] = df["CodArtVenta"].astype(str)
+
+        # Normalizamos los códigos escaneados a texto también
+        scanned = [str(c).strip() for c in st.session_state.scanned_codes]
+
+        tasks = df[
+            (df["CodArtVenta"].isin(scanned)) &
+            (df["Estado_Sys"] == "Pendiente")
+        ]
+
+        if tasks.empty:
+            st.warning("No se encontraron tareas pendientes para estos códigos.")
         else:
-            estados_unicos = (
-                base_df['Estado_Sys']
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-            estados_unicos = sorted(estados_unicos)
-            opciones = ["Todos"] + estados_unicos
-
-            estado_sel = st.selectbox(
-                "Filtrar por Estado_Sys:",
-                opciones,
-                index=0,
-                key="filtro_estado_sys"
-            )
-
-            if estado_sel == "Todos":
-                df_mostrar = base_df
-            else:
-                df_mostrar = base_df[base_df['Estado_Sys'].astype(str) == estado_sel]
-
-            st.dataframe(
-                df_mostrar,
-                hide_index=True,
-                use_container_width=True
-            )
-
-        st.divider()
+            st.session_state.session_tasks = tasks.reset_index(drop=True)
+            st.session_state.current_task_index = 0
+            st.session_state.processed_ids = []
+            st.success(f"Se cargaron {len(tasks)} tareas.")
+            time.sleep(0.8)
+            navigate_to("screen_execution")
 
 
     # =========================
@@ -1253,6 +1258,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
