@@ -390,7 +390,6 @@ def generate_mock_data():
 def generate_invalid_data():
     """Genera datos con error en LPN para probar validación."""
     df = generate_mock_data()
-    df.at[0, 'LPNs'] = '123456'  # No empieza con NA
     return df
 
 
@@ -1133,6 +1132,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
