@@ -665,11 +665,28 @@ def screen_execution():
             st.caption(current_task['DescArtProveedor'])
                     
         with col_det2:
+        # Detalle de producto + Cant/Bulto en horizontal
+        col_det1, col_det2 = st.columns([2, 1])
+
+        with col_det1:
+            st.markdown("**Producto / Cod. Venta**")
+            st.text(f"{current_task['CodArtVenta']}")
+            st.caption(current_task['DescArtProveedor'])
+
+        with col_det2:
             col_q, col_b = st.columns(2)
             with col_q:
-                st.metric(label="Cant.", value=current_task['CANTIDAD'])
+                st.markdown("**Cant.**")
+                st.markdown(
+                    f"<div class='big-number'>{current_task['CANTIDAD']}</div>",
+                    unsafe_allow_html=True
+                )
             with col_b:
-                st.metric(label="Bulto", value=current_task['BULTO'])
+                st.markdown("**Bulto**")
+                st.markdown(
+                    f"<div class='big-number'>{current_task['BULTO']}</div>",
+                    unsafe_allow_html=True
+                )
 
         st.markdown("---")
 
@@ -758,8 +775,13 @@ def screen_audit_details():
     if selected_code:
         sku_data = processed_tasks[processed_tasks['CodArtVenta'] == selected_code]
         summary = sku_data.groupby(['CodSucDestino', 'SucDestino'])['CANTIDAD'].sum().reset_index()
-        summary['Sucursal'] = summary['CodSucDestino'] + " - " + summary['SucDestino']
         
+        # 🔹 Forzamos a texto para evitar errores de numpy/pandas
+        summary['Sucursal'] = (
+            summary['CodSucDestino'].astype(str).fillna("") + " - " +
+            summary['SucDestino'].astype(str).fillna("")
+        )
+  
         st.subheader("Resumen por Tienda")
         st.dataframe(
             summary[['Sucursal', 'CANTIDAD']], 
@@ -805,6 +827,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
