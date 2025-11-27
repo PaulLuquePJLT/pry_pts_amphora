@@ -185,13 +185,15 @@ if 'graph_token' not in st.session_state:
 if 'onedrive_files' not in st.session_state:
     st.session_state.onedrive_files = []
 
+if 'show_camera' not in st.session_state:
+    st.session_state.show_camera = False
+
 
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
 
 def generate_mock_data():
-    """Genera datos simulados idénticos a la versión HTML / Excel."""
     data = []
     skus = ['SKU-101', 'SKU-102', '36710325']
     stores = [
@@ -203,23 +205,24 @@ def generate_mock_data():
     id_counter = 1
     for sku in skus:
         for store in stores:
-            # 2 tareas por tienda
             for i in range(2):
                 data.append({
                     'ID': id_counter,
                     'CodSucDestino': store['id'],
                     'SucDestino': store['name'],
-                    'CodArtRipley': sku,
+                    'CodArtRipley': sku,          # lo dejamos por si lo necesitas luego
+                    'CodArtVenta': sku,           # 🔹 ahora trabajaremos con este
                     'DescArtProveedor': f"ARTICULO GENERICO {sku}",
                     'CANTIDAD': 4,
                     'BULTO': i + 1,
                     'GUIA': '',
                     'COSTO_BASE_UNITARIO': 10.5,
-                    'LPNs': f"NA000{id_counter}999",  # LPN válido
+                    'LPNs': f"NA000{id_counter}999",
                     'Estado_Sys': 'Pendiente'
                 })
                 id_counter += 1
     return pd.DataFrame(data)
+
 
 def generate_invalid_data():
     """Genera datos con error en LPN para probar validación."""
@@ -360,8 +363,59 @@ def render_header():
 # ==========================================
 # PANTALLAS (VISTAS)
 # ==========================================
-
 # --- FASE A: SELECCIÓN DE ARCHIVO ---
+def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
+    """Normaliza columnas, valida LPNs y guarda la tabla base en session_state."""
+    df = df.copy()
+    df.columns = df.columns.str.strip()
+
+    # Mapear nombres del Excel a nombres internos (ajusta si tus columnas tienen otros nombres)
+    rename_map = {
+        'Cod Art Ripley': 'CodArtRipley',
+        'Cod Art Venta': 'CodArtVenta',
+        'Cod Suc Destino': 'CodSucDestino',
+        'Suc Destino': 'SucDestino',
+        'Desc Art Proveedor (Case Pack)': 'DescArtProveedor',
+        'COSTO BASE UNITARIO': 'COSTO_BASE_UNITARIO',
+    }
+    for old, new in rename_map.items():
+        if old in df.columns and new not in df.columns:
+            df = df.rename(columns={old: new})
+
+    required_cols = [
+        'ID',
+        'CodSucDestino',
+        'SucDestino',
+        'CodArtVenta',           # 🔹 clave base
+        'CANTIDAD',
+        'BULTO',
+        'COSTO_BASE_UNITARIO',
+        'LPNs',
+    ]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.error("❌ El {} no tiene las columnas obligatorias: {}".format(
+            source_name, ", ".join(missing)))
+        return
+
+    # Asegurar columna Estado_Sys
+    if 'Estado_Sys' not in df.columns:
+        df['Estado_Sys'] = 'Pendiente'
+    else:
+        df['Estado_Sys'] = df['Estado_Sys'].fillna('Pendiente')
+
+    # Validar LPNs
+    invalid_lpns = df[~df['LPNs'].astype(str).str.startswith('NA')]
+    if not invalid_lpns.empty:
+        st.error("❌ Error: Se encontraron LPNs que no inician con 'NA'.")
+        return
+
+    # Si todo bien, guardamos
+    st.session_state.file_data = df
+    st.success(f"✅ {source_name} válido. {len(df)} registros cargados.")
+    time.sleep(1)
+    navigate_to('screen_scan')
+
 def screen_file_selection():
     st.title("Seleccionar Archivo Base")
     st.caption(f"📂 Ruta: {ONEDRIVE_FOLDER_LABEL}")
@@ -401,6 +455,20 @@ def screen_file_selection():
 
     # ================== OPCIÓN DEMO (MOCK) ==================
     with col2:
+        st.markdown("### Cargar archivo local")
+        uploaded = st.file_uploader(
+            "Selecciona un archivo Excel",
+            type=["xlsx"],
+            key="local_upload"
+        )
+
+        if uploaded is not None:
+            with st.spinner("Leyendo y validando archivo..."):
+                try:
+                    df_local = pd.read_excel(uploaded)
+                    validate_and_set_file(df_local, source_name=f"archivo '{uploaded.name}'")
+                except Exception as e:
+                    st.error(f"❌ No se pudo leer el archivo: {e}")
         st.markdown("### Modo Demo / Pruebas")
 
         if st.button("📄 Distribucion_Lunes.xlsx (Simular válido)", use_container_width=True):
@@ -455,31 +523,42 @@ def screen_scan():
     # =========================
     # 2) Escaneo con cámara
     # =========================
+
     with st.expander("📷 Escanear con cámara", expanded=False):
-        st.caption("Apunte la cámara al código de barras y tome una foto.")
-        cam_img = st.camera_input(
-            "Usar cámara del dispositivo",
-            key="cam_input",
-            label_visibility="collapsed"
-        )
+        if not st.session_state.show_camera:
+            st.caption("Pulsa el botón para abrir la cámara del dispositivo.")
+            if st.button("Activar cámara 📷", key="btn_open_cam"):
+                st.session_state.show_camera = True
+                st.rerun()
+        else:
+            st.caption("La cámara está activa. Toma una foto del código de barras.")
+            cam_img = st.camera_input(
+                "Usar cámara del dispositivo",
+                key="cam_input",
+                label_visibility="collapsed"
+            )
 
-        if cam_img is not None:
-            image = Image.open(cam_img)
-            decoded_objects = decode(image)
+            # Botón para cerrar la cámara (opcional)
+            if st.button("Cerrar cámara ✖️", key="btn_close_cam"):
+                st.session_state.show_camera = False
+                st.rerun()
 
-            if decoded_objects:
-                # Tomamos el primer código leído
-                cam_code = decoded_objects[0].data.decode("utf-8").strip()
-                if cam_code:
-                    if cam_code in st.session_state.scanned_codes:
-                        st.info(f"El código {cam_code} ya está en la lista.")
+            if cam_img is not None:
+                image = Image.open(cam_img)
+                decoded_objects = decode(image)
+
+                if decoded_objects:
+                    cam_code = decoded_objects[0].data.decode("utf-8").strip()
+                    if cam_code:
+                        if cam_code in st.session_state.scanned_codes:
+                            st.info(f"El código {cam_code} ya está en la lista.")
+                        else:
+                            st.session_state.scanned_codes.append(cam_code)
+                            st.success(f"Código {cam_code} agregado desde cámara.")
                     else:
-                        st.session_state.scanned_codes.append(cam_code)
-                        st.success(f"Código {cam_code} agregado desde cámara.")
+                        st.error("No se pudo interpretar el código leído.")
                 else:
-                    st.error("No se pudo interpretar el código leído.")
-            else:
-                st.error("No se detectó ningún código de barras en la imagen. Intenta acercar más la cámara.")
+                    st.error("No se detectó ningún código de barras en la imagen. Intenta acercar más la cámara.")
 
     # =========================
     # 3) Botón Demo (opcional)
@@ -527,7 +606,7 @@ def screen_scan():
                 return
 
             tasks = full_df[
-                (full_df['CodArtRipley'].isin(st.session_state.scanned_codes)) &
+                (full_df['CodArtVenta'].astype(str).isin(st.session_state.scanned_codes)) &
                 (full_df['Estado_Sys'] == 'Pendiente')
             ]
 
@@ -581,9 +660,10 @@ def screen_execution():
         # Detalle de producto + métricas en 2 columnas
         col_det1, col_det2 = st.columns([2, 1])
         with col_det1:
-            st.markdown("**Producto / SKU**")
-            st.text(f"{current_task['CodArtRipley']}")
+            st.markdown("**Producto / Cod. Venta**")
+            st.text(f"{current_task['CodArtVenta']}")
             st.caption(current_task['DescArtProveedor'])
+                    
         with col_det2:
             col_q, col_b = st.columns(2)
             with col_q:
@@ -672,13 +752,11 @@ def screen_audit_details():
         navigate_to('screen_audit_main')
 
     processed_tasks = st.session_state.session_tasks
-    unique_skus = processed_tasks['CodArtRipley'].unique()
+    unique_codes = processed_tasks['CodArtVenta'].unique()
+    selected_code = st.selectbox("Seleccione código con sobrante:", unique_codes)
     
-    selected_sku = st.selectbox("Seleccione código con sobrante:", unique_skus)
-    
-    if selected_sku:
-        sku_data = processed_tasks[processed_tasks['CodArtRipley'] == selected_sku]
-        
+    if selected_code:
+        sku_data = processed_tasks[processed_tasks['CodArtVenta'] == selected_code]
         summary = sku_data.groupby(['CodSucDestino', 'SucDestino'])['CANTIDAD'].sum().reset_index()
         summary['Sucursal'] = summary['CodSucDestino'] + " - " + summary['SucDestino']
         
@@ -727,5 +805,6 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
