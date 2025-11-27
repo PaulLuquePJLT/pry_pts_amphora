@@ -380,7 +380,7 @@ def generate_mock_data():
                     'BULTO': i + 1,
                     'GUIA': '',
                     'COSTO_BASE_UNITARIO': 10.5,
-                    'LPNs': f"NA000{id_counter}999",
+                    'LPNs': '',
                     'Estado_Sys': 'Pendiente'
                 })
                 id_counter += 1
@@ -1133,6 +1133,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
