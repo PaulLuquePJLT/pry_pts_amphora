@@ -249,6 +249,68 @@ if 'show_base_table' not in st.session_state:
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
+def screen_base_table():
+    st.title("Tabla Base - Resumen")
+
+    # Botón para volver al menú de escaneo
+    if st.button("⬅️ Volver a Escanear Códigos", key="btn_volver_scan"):
+        navigate_to('screen_scan')
+        return
+
+    base_df = st.session_state.file_data
+
+    if base_df.empty:
+        st.warning("No hay tabla base cargada. Vuelva a **Seleccionar Archivo Base**.")
+        return
+
+    # ---------------------
+    # Datos generales
+    # ---------------------
+    pendientes = base_df[base_df['Estado_Sys'] == 'Pendiente']
+
+    unidades_pendientes = pendientes['CANTIDAD'].sum() if not pendientes.empty else 0
+    codigos_pendientes = pendientes['CodArtVenta'].nunique() if not pendientes.empty else 0
+
+    col_kpi1, col_kpi2 = st.columns(2)
+    with col_kpi1:
+        st.metric("Unidades Pendientes", int(unidades_pendientes))
+    with col_kpi2:
+        st.metric("Códigos Pendientes", int(codigos_pendientes))
+
+    st.markdown("---")
+
+    # ---------------------
+    # Filtro por Estado_Sys
+    # ---------------------
+    estados_unicos = (
+        base_df['Estado_Sys']
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+    estados_unicos = sorted(estados_unicos)
+    opciones = ["Todos"] + estados_unicos
+
+    estado_sel = st.selectbox(
+        "Filtrar por Estado_Sys:",
+        opciones,
+        index=0,
+        key="filtro_estado_sys_base"
+    )
+
+    if estado_sel == "Todos":
+        df_mostrar = base_df
+    else:
+        df_mostrar = base_df[base_df['Estado_Sys'].astype(str) == estado_sel]
+
+    st.subheader("Detalle de Tabla Base")
+    st.dataframe(
+        df_mostrar,
+        hide_index=True,
+        use_container_width=True
+    )
+
 def scroll_to_top():
     """Sube el scroll al inicio de la app (incluye un pequeño delay para que el layout termine de renderizar)."""
     components.html(
@@ -638,8 +700,7 @@ def screen_scan():
     col_tbl_btn, _ = st.columns([2, 1])
     with col_tbl_btn:
         if st.button("Ver Tabla Base 📊", use_container_width=True, key="btn_ver_tabla_base"):
-            st.session_state.show_base_table = not st.session_state.show_base_table
-            st.rerun()
+            navigate_to('screen_base_table')
 
     if st.session_state.show_base_table:
         base_df = st.session_state.file_data
@@ -1036,6 +1097,8 @@ if st.session_state.current_screen == 'screen_file_selection':
     screen_file_selection()
 elif st.session_state.current_screen == 'screen_scan':
     screen_scan()
+elif st.session_state.current_screen == 'screen_base_table':   # 👈 NUEVA
+    screen_base_table()
 elif st.session_state.current_screen == 'screen_execution':
     screen_execution()
 elif st.session_state.current_screen == 'screen_audit_main':
@@ -1044,6 +1107,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
