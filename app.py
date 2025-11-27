@@ -102,6 +102,24 @@ st.markdown("""
             padding-right: 0.5rem;
         }
 
+                /* 🔹 NUEVO: fila horizontal para Cant / Bulto */
+        .kv-row {
+            display: flex;
+            flex-direction: row;
+            gap: 1.5rem;
+            margin-top: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        .kv-item-label {
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 0.2rem;
+        }
+        .kv-item-value {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #0078d4;
+        }
         .header-bar {
             padding: 0.6rem 0.75rem;
             margin-bottom: 10px;
@@ -152,6 +170,7 @@ st.markdown("""
         margin-bottom: 0 !important;
     }
 }
+
 
     </style>
     """, unsafe_allow_html=True)
@@ -664,31 +683,25 @@ def screen_execution():
             st.text(f"{current_task['CodArtVenta']}")
             st.caption(current_task['DescArtProveedor'])
                     
-        with col_det2:
-            # Detalle de producto + Cant/Bulto en horizontal
-            col_det1, col_det2 = st.columns([2, 1])
-    
-            with col_det1:
-                st.markdown("**Producto / Cod. Venta**")
-                st.text(f"{current_task['CodArtVenta']}")
-                st.caption(current_task['DescArtProveedor'])
-    
-            with col_det2:
-                col_q, col_b = st.columns(2)
-                with col_q:
-                    st.markdown("**Cant.**")
-                    st.markdown(
-                        f"<div class='big-number'>{current_task['CANTIDAD']}</div>",
-                        unsafe_allow_html=True
-                    )
-                with col_b:
-                    st.markdown("**Bulto**")
-                    st.markdown(
-                        f"<div class='big-number'>{current_task['BULTO']}</div>",
-                        unsafe_allow_html=True
-                    )
+        # 🔹 Cant y Bulto en la misma fila
+        st.markdown(
+            f"""
+            <div class="kv-row">
+                <div>
+                    <div class="kv-item-label">Cant.</div>
+                    <div class="kv-item-value">{current_task['CANTIDAD']}</div>
+                </div>
+                <div>
+                    <div class="kv-item-label">Bulto</div>
+                    <div class="kv-item-value">{current_task['BULTO']}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.markdown("---")
+        
 
         # Datos logísticos
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
@@ -827,6 +840,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
