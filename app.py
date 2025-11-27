@@ -694,7 +694,6 @@ def screen_scan():
                 placeholder="Ej: 36710325"
             )
             # -------- ESCÁNER EN VIVO CON CÁMARA --------
-        st.markdown("### Escanear con cámara (en vivo)")
     
         st.caption("Apunte la cámara al código de barras. Cuando se lea un código válido se agregará automáticamente a la lista.")
     
@@ -1159,6 +1158,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
