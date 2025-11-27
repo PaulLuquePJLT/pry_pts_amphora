@@ -5,6 +5,9 @@ pillow
 pyzbar
 requests
 msal
+opencv-python-headless
+av
+streamlit-webrtc
 
 
 
