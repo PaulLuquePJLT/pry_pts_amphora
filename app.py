@@ -755,9 +755,9 @@ def screen_scan():
     with col_btn_table:
         if st.button("Ver tabla base 📊", key="btn_ver_tabla_base"):
             navigate_to("screen_base_table")
-            return  # salimos de la vista actual
+            return  # salimos de esta vista
 
-    st.write("")  # pequeño espacio
+    st.write("")
 
     # ------------------------------------------------------------------
     # 1) FORMULARIO DE ENTRADA MANUAL
@@ -768,7 +768,7 @@ def screen_scan():
         with col_in:
             code_input = st.text_input(
                 "Ingrese SKU o Código",
-                placeholder="Ej: 2012366914141",
+                placeholder="Ej: 36710325",
                 key="txt_manual_code",
             )
 
@@ -788,8 +788,9 @@ def screen_scan():
                 st.success(f"Código {code_input} agregado.")
 
     # ------------------------------------------------------------------
-    # 2) ESCÁNER EN VIVO CON CÁMARA
+    # 2) ESCÁNER EN VIVO CON CÁMARA (TRASERA)
     # ------------------------------------------------------------------
+    st.markdown("### Escanear con cámara (en vivo)")
     st.caption(
         "Apunte el código dentro del recuadro. "
         "Cuando lo tenga enfocado, pulse **'Validar código detectado'** "
@@ -799,16 +800,20 @@ def screen_scan():
     webrtc_ctx = webrtc_streamer(
         key="barcode-scanner-live",
         video_processor_factory=LiveBarcodeProcessor,
-        media_stream_constraints={"video": True, "audio": False},
+        media_stream_constraints={
+            "video": {
+                # 👇 pide explícitamente la cámara trasera
+                "facingMode": {"ideal": "environment"}
+            },
+            "audio": False,
+        },
         async_processing=True,
     )
 
-    # Último código leído por la cámara (puede ser None)
     detected_code = None
     if webrtc_ctx and webrtc_ctx.video_processor:
         detected_code = webrtc_ctx.video_processor.last_code
 
-    # Botón para confirmar el código leído por la cámara
     if st.button("Validar código detectado ✅", key="btn_use_camera_code"):
         if not detected_code:
             st.warning("Todavía no se ha detectado ningún código en la cámara.")
@@ -820,10 +825,8 @@ def screen_scan():
             else:
                 st.info(f"El código {detected_code} ya está en la lista.")
 
-            # Limpiamos el último código del procesador para no repetir
             if webrtc_ctx and webrtc_ctx.video_processor:
                 webrtc_ctx.video_processor.last_code = None
-
 
     # ------------------------------------------------------------------
     # 4) LISTA DE CÓDIGOS EN SESIÓN
@@ -831,9 +834,7 @@ def screen_scan():
     st.subheader(f"Códigos en sesión ({len(st.session_state.scanned_codes)})")
 
     if st.session_state.scanned_codes:
-        st.table(
-            pd.DataFrame(st.session_state.scanned_codes, columns=["Código"])
-        )
+        st.table(pd.DataFrame(st.session_state.scanned_codes, columns=["Código"]))
 
         if st.button(
             "Limpiar lista",
@@ -849,7 +850,7 @@ def screen_scan():
     st.divider()
 
     # ------------------------------------------------------------------
-    # 5) CARGAR TAREAS
+    # 5) CARGAR TAREAS (USANDO ÍNDICE DE LA TABLA BASE)
     # ------------------------------------------------------------------
     if st.button(
         "Cargar Tareas ➡️",
@@ -861,26 +862,28 @@ def screen_scan():
             st.error("Debe agregar al menos un código.")
             return
 
-        full_df = st.session_state.file_data
-        if full_df.empty:
+        if "file_data" not in st.session_state or st.session_state.file_data.empty:
             st.error("No hay datos cargados. Vuelva a **Seleccionar Archivo Base**.")
             return
 
-        # Aseguramos que CodArtVenta sea texto
-        df = full_df.copy()
+        # Aseguramos índice limpio 0..n-1 en la tabla base
+        base_df = st.session_state.file_data.reset_index(drop=True)
+        st.session_state.file_data = base_df  # guardamos de vuelta
+
+        df = base_df.copy()
         df["CodArtVenta"] = df["CodArtVenta"].astype(str)
 
-        # Normalizamos los códigos escaneados a texto también
         scanned = [str(c).strip() for c in st.session_state.scanned_codes]
 
-        tasks = df[
-            (df["CodArtVenta"].isin(scanned)) &
-            (df["Estado_Sys"] == "Pendiente")
-        ]
+        mask = (df["CodArtVenta"].isin(scanned)) & (df["Estado_Sys"] == "Pendiente")
+        tasks = df.loc[mask].copy()
 
         if tasks.empty:
             st.warning("No se encontraron tareas pendientes para estos códigos.")
         else:
+            # Guardamos el índice original de base_df como identificador único
+            tasks["_row_index"] = tasks.index  # índice de la tabla base
+            # Reset index solo para la vista, _row_index conserva el índice real
             st.session_state.session_tasks = tasks.reset_index(drop=True)
             st.session_state.current_task_index = 0
             st.session_state.processed_ids = []
@@ -890,61 +893,59 @@ def screen_scan():
 
 
 
+
 # --- FASE C: EJECUCIÓN (PTS) ---
 def screen_execution():
     tasks = st.session_state.session_tasks
-
-    # Por seguridad, si no hay tareas cargadas
-    if tasks.empty:
-        st.error("No hay tareas cargadas en la sesión.")
-        if st.button("Volver a escanear códigos"):
-            navigate_to('screen_scan')
-        return
-
     idx = st.session_state.current_task_index
     total = len(tasks)
 
-    # 👇 Si está marcado, intentamos subir el scroll y apagamos el flag
-    if st.session_state.get('scroll_to_top', False):
+    # Scroll-to-top opcional
+    if st.session_state.get("scroll_to_top", False):
         scroll_to_top()
         st.session_state.scroll_to_top = False
 
     if idx >= total:
-        navigate_to('screen_audit_main')
+        st.warning("Índice fuera de rango. Redirigiendo...")
+        navigate_to("screen_audit_main")
         return
 
     current_task = tasks.iloc[idx]
+
+    # Índice real en la tabla base
+    row_idx = int(current_task.get("_row_index", idx))
+    row_no = row_idx + 1  # para mostrar 1,2,3... en pantalla
 
     # --- TARJETA COMPACTA DE LA TAREA ---
     with st.container():
         st.markdown('<div class="task-card">', unsafe_allow_html=True)
 
-        # Encabezado: ID + tienda + progreso "Tarea x de y"
-        st.markdown(
-            f"""
-            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.35rem;">
-                <div>
-                    <div style="font-size:0.75rem; color:#777;">ID Base: {current_task['ID']}</div>
-                    <div class="store-name">
-                        {current_task['CodSucDestino']} - {current_task['SucDestino']}
-                    </div>
-                </div>
-                <div style="font-size:0.80rem; color:#555;">
-                    Tarea {idx + 1} de {total}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        # Fila superior: ID Base (número de registro) + "Tarea x de y"
+        col_top1, col_top2 = st.columns([2.5, 1])
+        with col_top1:
+            st.caption(f"ID Base: {row_no}")
+            st.markdown(
+                f"<div class='store-name'>{current_task['CodSucDestino']} - "
+                f"{current_task['SucDestino']}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_top2:
+            st.markdown(
+                f"<div style='text-align:right; font-size:0.8rem; color:#555;'>"
+                f"Tarea {idx + 1} de {total}</div>",
+                unsafe_allow_html=True,
+            )
 
-        st.markdown("<hr style='margin:0.4rem 0 0.35rem 0;'>", unsafe_allow_html=True)
+        st.markdown("---")
 
         # Detalle de producto
-        st.markdown("**Producto / Cod. Venta**")
-        st.text(str(current_task['CodArtVenta']))
-        st.caption(str(current_task['DescArtProveedor']))
+        col_det1, col_det2 = st.columns([2, 1])
+        with col_det1:
+            st.markdown("**Producto / Cod. Venta**")
+            st.text(f"{current_task['CodArtVenta']}")
+            st.caption(current_task["DescArtProveedor"])
 
-        # 🔹 Cant y Bulto en la misma fila, con icono a la izquierda
+        # Cant y Bulto en la misma fila (usa tu CSS kv-row / kv-box existente)
         st.markdown(
             f"""
             <div class="kv-row">
@@ -964,72 +965,61 @@ def screen_execution():
                 </div>
             </div>
             """,
-            unsafe_allow_html=True
-        )
-
-        st.markdown("<hr style='margin:0.5rem 0 0.4rem 0;'>", unsafe_allow_html=True)
-
-        # Datos logísticos
-        st.markdown(
-            f"**LPN Teórico:** "
-            f"<span style='background:#e9f7ec; color:#17833b; padding:2px 6px; "
-            f"border-radius:4px; font-size:0.85rem;'>{current_task['LPNs']}</span>",
             unsafe_allow_html=True,
         )
 
-        # Guía: label en pequeño + input con label colapsada (ahorra altura)
-        st.caption("Guía (Opcional)")
-        st.text_input(
-            "",
-            key=f"guia_{current_task['ID']}",
-            label_visibility="collapsed",
-            placeholder="Escanee guía si aplica..."
+        st.markdown("---")
+
+        # Datos logísticos
+        st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
+        guia = st.text_input(
+            "Guía (Opcional)",
+            key=f"guia_{row_idx}",
+            label_visibility="visible",
+            placeholder="Escanee guía si aplica...",
         )
 
-        st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+        st.write("")
 
-        # Botones dentro de la tarjeta, para quedar más arriba en móvil
-        col_confirm, col_cancel = st.columns([2, 1])
+        # Botones de acción
+        col_confirm, col_cancel = st.columns([3, 1])
 
         with col_confirm:
-            if st.button("CONFIRMAR ✅", type="primary", use_container_width=True):
-                # Guardamos ID solo como referencia (opcional)
-                st.session_state.processed_ids.append(current_task['ID'])
-        
-                # 🔹 Guardamos el índice original de la tabla base
-                if '__original_index__' in current_task:
-                    orig_idx = int(current_task['__original_index__'])
-                    if orig_idx not in st.session_state.processed_original_indices:
-                        st.session_state.processed_original_indices.append(orig_idx)
-        
-                # Avanzamos a la siguiente tarea
+            if st.button(
+                "CONFIRMAR ✅",
+                type="primary",
+                use_container_width=True,
+                key=f"btn_confirm_{row_idx}",
+            ):
+                # Guardamos índice REAL de la tabla base
+                st.session_state.processed_ids.append(row_idx)
                 st.session_state.current_task_index += 1
                 st.session_state.scroll_to_top = True
-        
-                if st.session_state.current_task_index >= len(st.session_state.session_tasks):
+
+                if st.session_state.current_task_index >= len(
+                    st.session_state.session_tasks
+                ):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
-                    navigate_to('screen_audit_main')
+                    navigate_to("screen_audit_main")
                 else:
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
 
-
         with col_cancel:
             if st.button(
                 "Cancelar ❌",
                 use_container_width=True,
-                key=f"btn_cancel_{current_task['ID']}"
+                key=f"btn_cancel_{row_idx}",
             ):
-                if st.session_state.get('confirm_cancel', False):
+                if st.session_state.get("confirm_cancel", False):
                     reset_session()
                 else:
                     st.warning("Presione de nuevo para confirmar cancelación")
                     st.session_state.confirm_cancel = True
 
-        st.markdown('</div>', unsafe_allow_html=True)  # cierre task-card
-
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 
@@ -1110,15 +1100,37 @@ def screen_audit_details():
 
 
 def finish_batch_process():
-    """Marca como 'Completado' solo las filas trabajadas en la tabla base."""
-    main_df = st.session_state.file_data.copy()
+    """
+    Marca como 'Completado' en la tabla base (file_data)
+    sólo las filas cuyos índices están en processed_ids.
+    """
+    if "file_data" not in st.session_state or st.session_state.file_data.empty:
+        st.warning("No hay tabla base cargada en memoria.")
+        return
 
-    processed_idx = st.session_state.get('processed_original_indices', [])
+    if "processed_ids" not in st.session_state or not st.session_state.processed_ids:
+        st.warning("No hay tareas procesadas en esta sesión.")
+        return
 
-    if processed_idx:
-        main_df.loc[processed_idx, 'Estado_Sys'] = 'Completado'
+    main_df = st.session_state.file_data.copy().reset_index(drop=True)
 
+    # Índices únicos y válidos
+    idxs = sorted(
+        set(
+            int(i)
+            for i in st.session_state.processed_ids
+            if isinstance(i, (int, float)) and 0 <= int(i) < len(main_df)
+        )
+    )
+
+    if not idxs:
+        st.warning("No se encontró ningún registro en la base para esos índices.")
+        return
+
+    main_df.loc[idxs, "Estado_Sys"] = "Completado"
     st.session_state.file_data = main_df
+    st.info(f"Se marcaron {len(idxs)} registros como 'Completado'.")
+
 
 
 
@@ -1142,6 +1154,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
