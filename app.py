@@ -975,12 +975,6 @@ def screen_execution():
 
         # Datos logísticos
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
-        guia = st.text_input(
-            "Guía (Opcional)",
-            key=f"guia_{row_idx}",
-            label_visibility="visible",
-            placeholder="Escanee guía si aplica...",
-        )
 
         st.write("")
 
@@ -1157,6 +1151,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
