@@ -795,7 +795,7 @@ def screen_scan():
     # ------------------------------------------------------------------
     # 2) ESCÁNER EN VIVO CON CÁMARA (TRASERA)
     # ------------------------------------------------------------------
-    st.markdown("### Escanear con cámara (en vivo)")
+
     st.caption(
         "Apunte el código dentro del recuadro. "
         "Cuando lo tenga enfocado, pulse **'Validar código detectado'** "
@@ -833,21 +833,6 @@ def screen_scan():
             # limpiamos para no reutilizarlo en el siguiente frame
             if webrtc_ctx and webrtc_ctx.video_processor:
                 webrtc_ctx.video_processor.last_code = None
-
-    # ------------------------------------------------------------------
-    # 3) BOTÓN DEMO
-    # ------------------------------------------------------------------
-    if st.button("Simular Escaneo (Demo)", key="btn_demo_scan"):
-        demo_codes = ["SKU-101", "36710325"]
-        any_new = False
-        for d in demo_codes:
-            if d not in st.session_state.scanned_codes:
-                st.session_state.scanned_codes.append(d)
-                any_new = True
-        if any_new:
-            st.success("Se agregaron códigos de demostración.")
-        else:
-            st.info("Los códigos de demo ya estaban en la lista.")
 
     # ------------------------------------------------------------------
     # 4) LISTA DE CÓDIGOS EN SESIÓN
@@ -1172,6 +1157,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
