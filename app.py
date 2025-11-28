@@ -973,8 +973,8 @@ def screen_execution():
 
         # Datos logísticos
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
-
-
+        st.markdown("-----")
+        
         # Botones de acción
         col_confirm, col_cancel = st.columns([3, 1])
 
@@ -1014,7 +1014,7 @@ def screen_execution():
                     st.session_state.confirm_cancel = True
 
         st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("-----")
+        
 
 
 # --- FASE D: AUDITORÍA (MAIN) ---
@@ -1148,6 +1148,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
