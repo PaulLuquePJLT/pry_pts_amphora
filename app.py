@@ -1014,6 +1014,7 @@ def screen_execution():
                     st.session_state.confirm_cancel = True
 
         st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("-----")
 
 
 # --- FASE D: AUDITORÍA (MAIN) ---
@@ -1147,6 +1148,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
