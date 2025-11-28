@@ -906,7 +906,7 @@ def screen_execution():
     # Scroll-to-top opcional
     if st.session_state.get("scroll_to_top", False):
         scroll_to_top()
-        st.session_state.scroll_to_top = False
+        st.session_state.scroll_to_top = True
 
     if idx >= total:
         st.warning("Índice fuera de rango. Redirigiendo...")
@@ -939,8 +939,6 @@ def screen_execution():
                 unsafe_allow_html=True,
             )
 
-        st.markdown("---")
-
         # Detalle de producto
         col_det1, col_det2 = st.columns([2, 1])
         with col_det1:
@@ -971,12 +969,11 @@ def screen_execution():
             unsafe_allow_html=True,
         )
 
-        st.markdown("---")
+
 
         # Datos logísticos
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
 
-        st.write("")
 
         # Botones de acción
         col_confirm, col_cancel = st.columns([3, 1])
@@ -1017,7 +1014,6 @@ def screen_execution():
                     st.session_state.confirm_cancel = True
 
         st.markdown("</div>", unsafe_allow_html=True)
-
 
 
 # --- FASE D: AUDITORÍA (MAIN) ---
@@ -1151,6 +1147,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
