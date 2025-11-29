@@ -264,6 +264,131 @@ if 'onedrive_file_id' not in st.session_state:
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
 
+def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado"):
+    """
+    Descarga el Excel desde OneDrive, actualiza la fila indicada en Estado_Sys
+    y vuelve a subir el archivo completo.
+
+    Devuelve: (ok: bool, status_code: int | None, error_text: str | None)
+    """
+    file_id = st.session_state.get("onedrive_file_id")
+    if not file_id:
+        # No hay archivo remoto asociado: nada que hacer, consideramos OK.
+        return True, None, None
+
+    token = get_access_token()
+    if not token:
+        return False, None, "No se pudo obtener el token de OneDrive."
+
+    # 1) Descargar versión actual
+    url = f"{GRAPH_BASE}/me/drive/items/{file_id}/content"
+    resp = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+
+    if resp.status_code != 200:
+        try:
+            err = resp.json()
+        except Exception:
+            err = resp.text
+        return False, resp.status_code, str(err)
+
+    # 2) Leer a DataFrame
+    try:
+        remote_df = pd.read_excel(io.BytesIO(resp.content))
+    except Exception as e:
+        return False, None, f"Error leyendo Excel remoto: {e}"
+
+    # Nos aseguramos que exista la columna
+    if "Estado_Sys" not in remote_df.columns:
+        remote_df["Estado_Sys"] = "Pendiente"
+
+    # 3) Validar índice
+    if row_index < 0 or row_index >= len(remote_df):
+        return False, None, f"Índice de fila {row_index} fuera de rango en el archivo remoto."
+
+    # 4) Actualizar la fila
+    remote_df.at[row_index, "Estado_Sys"] = new_status
+
+    # 5) Guardar en memoria y subir el archivo completo
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        # Si tu archivo tiene varias hojas y solo usas una,
+        # esto creará un archivo de una sola hoja.
+        remote_df.to_excel(writer, index=False)
+    out.seek(0)
+
+    resp_put = requests.put(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        data=out.getvalue(),
+    )
+
+    if resp_put.status_code in (200, 201):
+        return True, resp_put.status_code, None
+
+    try:
+        err2 = resp_put.json()
+    except Exception:
+        err2 = resp_put.text
+    return False, resp_put.status_code, str(err2)
+
+
+def marcar_tarea_completada(current_task: pd.Series) -> bool:
+    """
+    Marca una tarea como completada:
+      1) Actualiza OneDrive (descargar → modificar fila → subir).
+      2) Si eso sale bien, actualiza la copia local (file_data, session_tasks)
+         y añade el índice a processed_ids.
+
+    Si OneDrive está bloqueado (423) o falla la subida, NO avanza la tarea.
+    """
+    # Índice REAL de la tabla base (lo tienes en _row_index)
+    row_idx = int(current_task["_row_index"])
+
+    # --- 1) Intentar actualizar el archivo remoto en OneDrive (si hay archivo asociado) ---
+    file_id = st.session_state.get("onedrive_file_id")
+    if file_id:
+        ok_remote, status, err = update_estado_sys_onedrive_row(row_idx, "Completado")
+        if not ok_remote:
+            # Archivo bloqueado (por ejemplo 423 Locked)
+            if status == 423:
+                st.warning(
+                    "La base está siendo trabajada en otro dispositivo. "
+                    "Espere unos momentos y vuelva a intentar."
+                )
+            else:
+                st.error(f"Error subiendo archivo a OneDrive ({status}).")
+                if err:
+                    st.caption(str(err))
+            # ❌ No actualizamos nada local ni avanzamos de tarea
+            return False
+
+    # --- 2) Si OneDrive fue OK (o no usamos OneDrive), actualizamos la copia local ---
+
+    # 2a) Tabla base en memoria
+    base_df = st.session_state.file_data
+    if "Estado_Sys" not in base_df.columns:
+        base_df["Estado_Sys"] = "Pendiente"
+    base_df.at[row_idx, "Estado_Sys"] = "Completado"
+    st.session_state.file_data = base_df
+
+    # 2b) Vista de tareas de la sesión
+    tasks = st.session_state.session_tasks
+    if "Estado_Sys" in tasks.columns:
+        tasks.loc[tasks["_row_index"] == row_idx, "Estado_Sys"] = "Completado"
+        st.session_state.session_tasks = tasks
+
+    # 2c) Registro en processed_ids
+    if "processed_ids" not in st.session_state:
+        st.session_state.processed_ids = []
+    if row_idx not in st.session_state.processed_ids:
+        st.session_state.processed_ids.append(row_idx)
+
+    return True
+
+
 def save_excel_to_onedrive(item_id: str, df: pd.DataFrame) -> bool:
     """
     Sube (sobrescribe) el Excel en OneDrive a partir del DataFrame dado.
@@ -1031,9 +1156,11 @@ def screen_execution():
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
         st.markdown("-----")
         
+        # ... dentro de screen_execution, después de mostrar el LPN teórico, etc.
+    
         # Botones de acción
         col_confirm, col_cancel = st.columns([3, 1])
-
+    
         with col_confirm:
             if st.button(
                 "CONFIRMAR ✅",
@@ -1041,30 +1168,17 @@ def screen_execution():
                 use_container_width=True,
                 key=f"btn_confirm_{row_idx}",
             ):
-                # 1) Actualizar la tabla base en memoria
-                base_df = st.session_state.file_data.copy().reset_index(drop=True)
-        
-                if 0 <= row_idx < len(base_df):
-                    base_df.loc[row_idx, "Estado_Sys"] = "Completado"
-                    st.session_state.file_data = base_df
-        
-                    # Guardamos el índice en la lista de procesados (para auditoría)
-                    st.session_state.processed_ids.append(row_idx)
-        
-                    # 2) Si hay archivo de OneDrive asociado, subimos cambios
-                    file_id = st.session_state.get("onedrive_file_id")
-                    if file_id:
-                        ok = save_excel_to_onedrive(file_id, base_df)
-                        if not ok:
-                            st.warning("No se pudo guardar en OneDrive. Revisa la conexión.")
-        
-                else:
-                    st.error("No se encontró el registro en la tabla base.")
-        
-                # 3) Avanzar a la siguiente tarea
+                # 1) Intentar marcar y sincronizar la tarea (OneDrive + copia local)
+                ok = marcar_tarea_completada(current_task)
+    
+                # Si hubo error (archivo bloqueado, fallo en subida, etc.) no avanzamos
+                if not ok:
+                    return
+    
+                # 2) Si todo salió bien, avanzamos a la siguiente tarea
                 st.session_state.current_task_index += 1
                 st.session_state.scroll_to_top = True
-        
+    
                 if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
@@ -1073,8 +1187,7 @@ def screen_execution():
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
-
-
+    
         with col_cancel:
             if st.button(
                 "Cancelar ❌",
@@ -1086,6 +1199,7 @@ def screen_execution():
                 else:
                     st.warning("Presione de nuevo para confirmar cancelación")
                     st.session_state.confirm_cancel = True
+
 
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -1222,6 +1336,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
