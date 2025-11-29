@@ -31,8 +31,8 @@ st.set_page_config(
 # ==========================================
 # CONFIGURACIÓN ONEDRIVE / MICROSOFT GRAPH
 # ==========================================
-CLIENT_ID = "0de56420-3ff9-4183-b2cc-ad318f219994"   # Id. de aplicación (cliente)
-TENANT_ID = "701edd3e-c7a8-4789-b1ce-8a243620d68f"   # Id. de directorio (inquilino)
+CLIENT_ID = "134e5648-8760-4886-b140-2bbb4b0298b5"   # Id. de aplicación (cliente)
+TENANT_ID = "ddd852bb-b786-4db0-9c9f-aab5e84981ca"   # Id. de directorio (inquilino)
 
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["User.Read", "Files.Read.All"]  # o "Files.ReadWrite.All" si luego quieres escribir
@@ -255,11 +255,44 @@ if 'scroll_to_top' not in st.session_state:
     
 if 'show_base_table' not in st.session_state:
     st.session_state.show_base_table = False
+    
+if 'onedrive_file_id' not in st.session_state:
+    st.session_state.onedrive_file_id = None
 
 
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
+
+def save_excel_to_onedrive(item_id: str, df: pd.DataFrame) -> bool:
+    """
+    Sube (sobrescribe) el Excel en OneDrive a partir del DataFrame dado.
+    Devuelve True si fue ok.
+    """
+    token = get_access_token()
+    if not token:
+        return False
+
+    # Convertimos el DataFrame a Excel en memoria
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    url = f"{GRAPH_BASE}/me/drive/items/{item_id}/content"
+
+    resp = requests.put(url, headers=headers, data=buffer.read())
+    if resp.status_code in (200, 201):
+        return True
+    else:
+        st.error(f"Error subiendo archivo a OneDrive ({resp.status_code}).")
+        # Puedes mostrar resp.text para depurar si quieres
+        return False
+
 class LiveBarcodeProcessor(VideoProcessorBase):
     """
     Procesa frames de la cámara en vivo y detecta códigos de barras/QR.
@@ -664,6 +697,7 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
 
     # Si todo bien, guardamos
     st.session_state.file_data = df
+    st.session_state.onedrive_file_id = None
     st.success(f"✅ {source_name} válido. {len(df)} registros cargados.")
     time.sleep(1)
     navigate_to('screen_scan')
@@ -695,13 +729,13 @@ def screen_file_selection():
                         df = load_excel_from_onedrive(item["id"])
                         if df is None:
                             continue
-                        # Aquí podrías hacer validaciones adicionales, por ahora asumimos que la estructura coincide
-                        # con tus columnas actuales: CodSucDestino, CodArtRipley, etc.
-                        # Si tu Excel tiene otros nombres, aquí los puedes renombrar.
+                
                         st.session_state.file_data = df
+                        st.session_state.onedrive_file_id = item["id"]   # 👈 guardamos el id
                         st.success(f"✅ Archivo '{item['name']}' cargado con {len(df)} registros.")
                         time.sleep(1)
                         navigate_to('screen_scan')
+
         else:
             st.info("Pulsa el botón 'Conectar y listar archivos' para ver los Excel de la carpeta.")
 
@@ -733,6 +767,7 @@ def screen_file_selection():
                     st.error("❌ Error: Se encontraron LPNs que no inician con 'NA'.")
                 else:
                     st.session_state.file_data = df
+                    st.session_state.onedrive_file_id = None
                     st.success(f"✅ Archivo de ejemplo válido. {len(df)} registros cargados.")
                     time.sleep(1)
                     navigate_to('screen_scan')
@@ -985,14 +1020,31 @@ def screen_execution():
                 use_container_width=True,
                 key=f"btn_confirm_{row_idx}",
             ):
-                # Guardamos índice REAL de la tabla base
-                st.session_state.processed_ids.append(row_idx)
+                # 1) Actualizar la tabla base en memoria
+                base_df = st.session_state.file_data.copy().reset_index(drop=True)
+        
+                if 0 <= row_idx < len(base_df):
+                    base_df.loc[row_idx, "Estado_Sys"] = "Completado"
+                    st.session_state.file_data = base_df
+        
+                    # Guardamos el índice en la lista de procesados (para auditoría)
+                    st.session_state.processed_ids.append(row_idx)
+        
+                    # 2) Si hay archivo de OneDrive asociado, subimos cambios
+                    file_id = st.session_state.get("onedrive_file_id")
+                    if file_id:
+                        ok = save_excel_to_onedrive(file_id, base_df)
+                        if not ok:
+                            st.warning("No se pudo guardar en OneDrive. Revisa la conexión.")
+        
+                else:
+                    st.error("No se encontró el registro en la tabla base.")
+        
+                # 3) Avanzar a la siguiente tarea
                 st.session_state.current_task_index += 1
                 st.session_state.scroll_to_top = True
-
-                if st.session_state.current_task_index >= len(
-                    st.session_state.session_tasks
-                ):
+        
+                if st.session_state.current_task_index >= len(st.session_state.session_tasks):
                     st.success("¡Lote finalizado!")
                     time.sleep(0.5)
                     navigate_to("screen_audit_main")
@@ -1000,6 +1052,7 @@ def screen_execution():
                     st.success("Tarea confirmada")
                     time.sleep(0.2)
                     st.rerun()
+
 
         with col_cancel:
             if st.button(
@@ -1148,6 +1201,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
