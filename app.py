@@ -656,7 +656,7 @@ def render_header():
 # ==========================================
 # --- FASE A: SELECCIÓN DE ARCHIVO ---
 def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
-    """Normaliza columnas, valida LPNs y guarda la tabla base en session_state."""
+    """Normaliza columnas, valida estructura mínima y guarda la tabla base en session_state."""
     df = df.copy()
     df.columns = df.columns.str.strip()
 
@@ -673,11 +673,12 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
         if old in df.columns and new not in df.columns:
             df = df.rename(columns={old: new})
 
+    # Columnas obligatorias que la app usa en todas las pantallas
     required_cols = [
         'ID',
         'CodSucDestino',
         'SucDestino',
-        'CodArtVenta',           # 🔹 clave base
+        'CodArtVenta',           # clave base en toda la app
         'CANTIDAD',
         'BULTO',
         'COSTO_BASE_UNITARIO',
@@ -685,8 +686,11 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
     ]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
-        st.error("❌ El {} no tiene las columnas obligatorias: {}".format(
-            source_name, ", ".join(missing)))
+        st.error(
+            "❌ El {} no tiene las columnas obligatorias: {}".format(
+                source_name, ", ".join(missing)
+            )
+        )
         return
 
     # Asegurar columna Estado_Sys
@@ -695,12 +699,17 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
     else:
         df['Estado_Sys'] = df['Estado_Sys'].fillna('Pendiente')
 
-    # Si todo bien, guardamos
+    # Guardar tabla base normalizada en sesión
     st.session_state.file_data = df
-    st.session_state.onedrive_file_id = None
+
+    # 🔴 IMPORTANTE: NO tocar onedrive_file_id aquí.
+    #   - Para archivo local: se pone a None fuera.
+    #   - Para archivo OneDrive: se deja con el id que se haya seteado antes.
+
     st.success(f"✅ {source_name} válido. {len(df)} registros cargados.")
     time.sleep(1)
     navigate_to('screen_scan')
+
 
 def screen_file_selection():
     st.title("Seleccionar Archivo Base")
@@ -723,18 +732,24 @@ def screen_file_selection():
         files = st.session_state.onedrive_files
         if files:
             st.markdown("#### Selecciona un archivo:")
-            for item in files:
-                if st.button(f"📄 {item['name']}", key=item["id"], use_container_width=True):
-                    with st.spinner("Descargando y validando estructura..."):
-                        df = load_excel_from_onedrive(item["id"])
-                        if df is None:
-                            continue
+                for item in files:
+                    if st.button(f"📄 {item['name']}", key=item["id"], use_container_width=True):
+                        with st.spinner("Descargando y validando estructura..."):
+                            df = load_excel_from_onedrive(item["id"])
+                            if df is None:
+                                continue
                 
-                        st.session_state.file_data = df
-                        st.session_state.onedrive_file_id = item["id"]   # 👈 guardamos el id
-                        st.success(f"✅ Archivo '{item['name']}' cargado con {len(df)} registros.")
-                        time.sleep(1)
-                        navigate_to('screen_scan')
+                            # ✅ Usamos la MISMA validación/normalización que para archivos locales
+                            validate_and_set_file(
+                                df,
+                                source_name=f"archivo OneDrive '{item['name']}'"
+                            )
+                            # OJO: validate_and_set_file ya hace:
+                            #   - renombrar columnas (Cod Art Venta -> CodArtVenta, etc.)
+                            #   - asegurar Estado_Sys
+                            #   - guardar en st.session_state.file_data
+                            #   - navegar a 'screen_scan'
+
 
         else:
             st.info("Pulsa el botón 'Conectar y listar archivos' para ver los Excel de la carpeta.")
@@ -1201,6 +1216,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
