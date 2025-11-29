@@ -732,23 +732,22 @@ def screen_file_selection():
         files = st.session_state.onedrive_files
         if files:
             st.markdown("#### Selecciona un archivo:")
-                for item in files:
-                    if st.button(f"📄 {item['name']}", key=item["id"], use_container_width=True):
-                        with st.spinner("Descargando y validando estructura..."):
-                            df = load_excel_from_onedrive(item["id"])
-                            if df is None:
-                                continue
-                
-                            # ✅ Usamos la MISMA validación/normalización que para archivos locales
-                            validate_and_set_file(
-                                df,
-                                source_name=f"archivo OneDrive '{item['name']}'"
-                            )
-                            # OJO: validate_and_set_file ya hace:
-                            #   - renombrar columnas (Cod Art Venta -> CodArtVenta, etc.)
-                            #   - asegurar Estado_Sys
-                            #   - guardar en st.session_state.file_data
-                            #   - navegar a 'screen_scan'
+            for item in files:
+                if st.button(f"📄 {item['name']}", key=item["id"], use_container_width=True):
+                    with st.spinner("Descargando y validando estructura..."):
+                        df = load_excel_from_onedrive(item["id"])
+                        if df is None:
+                            continue
+            
+                        # Guardamos el id del archivo remoto
+                        st.session_state.onedrive_file_id = item["id"]
+            
+                        # Y normalizamos/validamos estructura
+                        validate_and_set_file(
+                            df,
+                            source_name=f"archivo OneDrive '{item['name']}'"
+                        )
+
 
 
         else:
@@ -1216,6 +1215,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
