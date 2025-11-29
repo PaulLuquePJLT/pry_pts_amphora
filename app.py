@@ -381,7 +381,14 @@ class LiveBarcodeProcessor(VideoProcessorBase):
 
 
 def screen_base_table():
-    st.title("Tabla Base (OneDrive)")
+    # ---- HEADER: Título + botón volver ----
+    col_title, col_back = st.columns([3, 1])
+    with col_title:
+        st.title("Tabla Base (OneDrive)")
+    with col_back:
+        if st.button("⬅️ Volver a Escaneo", use_container_width=True, key="btn_base_back_scan"):
+            navigate_to('screen_scan')
+            return  # importante: salimos de la función
 
     file_id = st.session_state.get("onedrive_file_id")
     if not file_id:
@@ -399,7 +406,7 @@ def screen_base_table():
         if df_norm is None:
             return
 
-    # Métricas de pendientes SIEMPRE sobre la base real
+    # ---- Métricas de pendientes sobre la base real ----
     pendientes = df_norm[df_norm['Estado_Sys'] == 'Pendiente']
     unidades_pendientes = int(pendientes['CANTIDAD'].sum()) if not pendientes.empty else 0
     codigos_pendientes = int(pendientes['CodArtVenta'].nunique()) if not pendientes.empty else 0
@@ -412,7 +419,7 @@ def screen_base_table():
 
     st.divider()
 
-    # Filtro por estado
+    # ---- Filtro por Estado_Sys ----
     estados_unicos = (
         df_norm['Estado_Sys']
         .dropna()
@@ -440,6 +447,7 @@ def screen_base_table():
         hide_index=True,
         use_container_width=True
     )
+
 
 
 def scroll_to_top():
@@ -1214,6 +1222,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
