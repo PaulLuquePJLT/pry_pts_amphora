@@ -265,10 +265,13 @@ if 'onedrive_file_id' not in st.session_state:
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
 
-def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado"):
+def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado", max_retries: int = 2):
     """
     Descarga el Excel desde OneDrive, actualiza la fila indicada en Estado_Sys
     y vuelve a subir el archivo completo.
+
+    Implementa reintentos automáticos cuando hay conflictos de concurrencia
+    (409 resourceModified / 412 PreconditionFailed).
 
     Devuelve: (ok: bool, status_code: int | None, error_text: str | None)
     """
@@ -281,59 +284,76 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
     if not token:
         return False, None, "No se pudo obtener el token de OneDrive."
 
-    # 1) Descargar versión actual
     url = f"{GRAPH_BASE}/me/drive/items/{file_id}/content"
-    resp = requests.get(url, headers={"Authorization": f"Bearer {token}"})
 
-    if resp.status_code != 200:
+    last_status = None
+    last_err_txt = None
+
+    for attempt in range(max_retries + 1):
+        # 1) Descargar versión actual
+        resp = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+        if resp.status_code != 200:
+            try:
+                err = resp.json()
+            except Exception:
+                err = resp.text
+            return False, resp.status_code, str(err)
+
+        # 2) Leer a DataFrame
         try:
-            err = resp.json()
+            remote_df = pd.read_excel(io.BytesIO(resp.content))
+        except Exception as e:
+            return False, None, f"Error leyendo Excel remoto: {e}"
+
+        # Nos aseguramos que exista la columna
+        if "Estado_Sys" not in remote_df.columns:
+            remote_df["Estado_Sys"] = "Pendiente"
+
+        # 3) Validar índice
+        if row_index < 0 or row_index >= len(remote_df):
+            return False, None, f"Índice de fila {row_index} fuera de rango en el archivo remoto."
+
+        # 4) Actualizar la fila
+        remote_df.at[row_index, "Estado_Sys"] = new_status
+
+        # 5) Guardar en memoria y subir el archivo completo
+        out = io.BytesIO()
+        with pd.ExcelWriter(out, engine="openpyxl") as writer:
+            remote_df.to_excel(writer, index=False)
+        out.seek(0)
+
+        resp_put = requests.put(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            },
+            data=out.getvalue(),
+        )
+
+        if resp_put.status_code in (200, 201):
+            # ✅ Subida correcta
+            return True, resp_put.status_code, None
+
+        # Guardamos info del último fallo
+        last_status = resp_put.status_code
+        try:
+            last_err_txt = resp_put.json()
         except Exception:
-            err = resp.text
-        return False, resp.status_code, str(err)
+            last_err_txt = resp_put.text
 
-    # 2) Leer a DataFrame
-    try:
-        remote_df = pd.read_excel(io.BytesIO(resp.content))
-    except Exception as e:
-        return False, None, f"Error leyendo Excel remoto: {e}"
+        # Si es conflicto de concurrencia, reintentamos con la versión más nueva
+        if resp_put.status_code in (409, 412):
+            # Pequeña pausa para evitar reintentar demasiado rápido
+            time.sleep(0.3)
+            continue
 
-    # Nos aseguramos que exista la columna
-    if "Estado_Sys" not in remote_df.columns:
-        remote_df["Estado_Sys"] = "Pendiente"
+        # Si es otro tipo de error (423, 5xx, etc.), salimos del bucle
+        break
 
-    # 3) Validar índice
-    if row_index < 0 or row_index >= len(remote_df):
-        return False, None, f"Índice de fila {row_index} fuera de rango en el archivo remoto."
+    # Si llegamos aquí, no se pudo subir después de los reintentos
+    return False, last_status, str(last_err_txt)
 
-    # 4) Actualizar la fila
-    remote_df.at[row_index, "Estado_Sys"] = new_status
-
-    # 5) Guardar en memoria y subir el archivo completo
-    out = io.BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        # Si tu archivo tiene varias hojas y solo usas una,
-        # esto creará un archivo de una sola hoja.
-        remote_df.to_excel(writer, index=False)
-    out.seek(0)
-
-    resp_put = requests.put(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        },
-        data=out.getvalue(),
-    )
-
-    if resp_put.status_code in (200, 201):
-        return True, resp_put.status_code, None
-
-    try:
-        err2 = resp_put.json()
-    except Exception:
-        err2 = resp_put.text
-    return False, resp_put.status_code, str(err2)
 
 
 def marcar_tarea_completada(current_task: pd.Series) -> bool:
@@ -352,19 +372,31 @@ def marcar_tarea_completada(current_task: pd.Series) -> bool:
     file_id = st.session_state.get("onedrive_file_id")
     if file_id:
         ok_remote, status, err = update_estado_sys_onedrive_row(row_idx, "Completado")
+
         if not ok_remote:
-            # Archivo bloqueado (por ejemplo 423 Locked)
+            # 423: archivo bloqueado de forma "física"
             if status == 423:
                 st.warning(
                     "La base está siendo trabajada en otro dispositivo. "
                     "Espere unos momentos y vuelva a intentar."
                 )
+
+            # 409 / 412: conflicto de concurrencia después de varios reintentos
+            elif status in (409, 412):
+                st.warning(
+                    "La base se modificó desde otro dispositivo mientras guardabas. "
+                    "Se ha cargado la versión más reciente. "
+                    "Vuelve a pulsar CONFIRMAR para registrar la tarea."
+                )
+
             else:
                 st.error(f"Error subiendo archivo a OneDrive ({status}).")
                 if err:
                     st.caption(str(err))
+
             # ❌ No actualizamos nada local ni avanzamos de tarea
             return False
+
 
     # --- 2) Si OneDrive fue OK (o no usamos OneDrive), actualizamos la copia local ---
 
@@ -1337,6 +1369,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
