@@ -381,40 +381,40 @@ class LiveBarcodeProcessor(VideoProcessorBase):
 
 
 def screen_base_table():
-    st.title("Tabla Base - Resumen")
+    st.title("Tabla Base (OneDrive)")
 
-    # Botón para volver al menú de escaneo
-    if st.button("⬅️ Volver a Escanear Códigos", key="btn_volver_scan"):
-        navigate_to('screen_scan')
+    file_id = st.session_state.get("onedrive_file_id")
+    if not file_id:
+        st.error("No hay un archivo de OneDrive vinculado en esta sesión.")
+        st.info("Vuelve a 'Seleccionar archivo base' y elige un archivo desde OneDrive.")
         return
 
-    base_df = st.session_state.file_data
+    with st.spinner("Leyendo tabla base desde OneDrive..."):
+        df_remote = load_excel_from_onedrive(file_id)
+        if df_remote is None:
+            st.error("No se pudo leer el archivo remoto.")
+            return
 
-    if base_df.empty:
-        st.warning("No hay tabla base cargada. Vuelva a **Seleccionar Archivo Base**.")
-        return
+        df_norm = normalize_df(df_remote, source_name="archivo OneDrive")
+        if df_norm is None:
+            return
 
-    # ---------------------
-    # Datos generales
-    # ---------------------
-    pendientes = base_df[base_df['Estado_Sys'] == 'Pendiente']
+    # Métricas de pendientes SIEMPRE sobre la base real
+    pendientes = df_norm[df_norm['Estado_Sys'] == 'Pendiente']
+    unidades_pendientes = int(pendientes['CANTIDAD'].sum()) if not pendientes.empty else 0
+    codigos_pendientes = int(pendientes['CodArtVenta'].nunique()) if not pendientes.empty else 0
 
-    unidades_pendientes = pendientes['CANTIDAD'].sum() if not pendientes.empty else 0
-    codigos_pendientes = pendientes['CodArtVenta'].nunique() if not pendientes.empty else 0
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.metric("Unidades Pendientes", unidades_pendientes)
+    with col_m2:
+        st.metric("Códigos Pendientes", codigos_pendientes)
 
-    col_kpi1, col_kpi2 = st.columns(2)
-    with col_kpi1:
-        st.metric("Unidades Pendientes", int(unidades_pendientes))
-    with col_kpi2:
-        st.metric("Códigos Pendientes", int(codigos_pendientes))
+    st.divider()
 
-    st.markdown("---")
-
-    # ---------------------
-    # Filtro por Estado_Sys
-    # ---------------------
+    # Filtro por estado
     estados_unicos = (
-        base_df['Estado_Sys']
+        df_norm['Estado_Sys']
         .dropna()
         .astype(str)
         .unique()
@@ -431,16 +431,16 @@ def screen_base_table():
     )
 
     if estado_sel == "Todos":
-        df_mostrar = base_df
+        df_mostrar = df_norm
     else:
-        df_mostrar = base_df[base_df['Estado_Sys'].astype(str) == estado_sel]
+        df_mostrar = df_norm[df_norm['Estado_Sys'].astype(str) == estado_sel]
 
-    st.subheader("Detalle de Tabla Base")
     st.dataframe(
         df_mostrar,
         hide_index=True,
         use_container_width=True
     )
+
 
 def scroll_to_top():
     """Sube el scroll al inicio de la app (incluye un pequeño delay para que el layout termine de renderizar)."""
@@ -655,12 +655,10 @@ def render_header():
 # PANTALLAS (VISTAS)
 # ==========================================
 # --- FASE A: SELECCIÓN DE ARCHIVO ---
-def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
-    """Normaliza columnas, valida estructura mínima y guarda la tabla base en session_state."""
+def normalize_df(df: pd.DataFrame, source_name: str = "archivo"):
     df = df.copy()
     df.columns = df.columns.str.strip()
 
-    # Mapear nombres del Excel a nombres internos (ajusta si tus columnas tienen otros nombres)
     rename_map = {
         'Cod Art Ripley': 'CodArtRipley',
         'Cod Art Venta': 'CodArtVenta',
@@ -673,12 +671,11 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
         if old in df.columns and new not in df.columns:
             df = df.rename(columns={old: new})
 
-    # Columnas obligatorias que la app usa en todas las pantallas
     required_cols = [
         'ID',
         'CodSucDestino',
         'SucDestino',
-        'CodArtVenta',           # clave base en toda la app
+        'CodArtVenta',
         'CANTIDAD',
         'BULTO',
         'COSTO_BASE_UNITARIO',
@@ -687,28 +684,30 @@ def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         st.error(
-            "❌ El {} no tiene las columnas obligatorias: {}".format(
-                source_name, ", ".join(missing)
-            )
+            f"❌ El {source_name} no tiene las columnas obligatorias: {', '.join(missing)}"
         )
-        return
+        return None
 
-    # Asegurar columna Estado_Sys
     if 'Estado_Sys' not in df.columns:
         df['Estado_Sys'] = 'Pendiente'
     else:
         df['Estado_Sys'] = df['Estado_Sys'].fillna('Pendiente')
 
-    # Guardar tabla base normalizada en sesión
-    st.session_state.file_data = df
+    return df
+    
+def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
+    df_norm = normalize_df(df, source_name=source_name)
+    if df_norm is None:
+        return
 
-    # 🔴 IMPORTANTE: NO tocar onedrive_file_id aquí.
-    #   - Para archivo local: se pone a None fuera.
-    #   - Para archivo OneDrive: se deja con el id que se haya seteado antes.
+    st.session_state.file_data = df_norm
 
-    st.success(f"✅ {source_name} válido. {len(df)} registros cargados.")
+    # NO tocar onedrive_file_id aquí
+
+    st.success(f"✅ {source_name} válido. {len(df_norm)} registros cargados.")
     time.sleep(1)
     navigate_to('screen_scan')
+
 
 
 def screen_file_selection():
@@ -1215,6 +1214,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
