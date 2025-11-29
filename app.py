@@ -32,10 +32,10 @@ st.set_page_config(
 # CONFIGURACIÓN ONEDRIVE / MICROSOFT GRAPH
 # ==========================================
 CLIENT_ID = "134e5648-8760-4886-b140-2bbb4b0298b5"   # Id. de aplicación (cliente)
-TENANT_ID = "ddd852bb-b786-4db0-9c9f-aab5e84981ca"   # Id. de directorio (inquilino)
+TENANT_ID = "consumers"   # Id. de directorio (inquilino)
 
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = ["User.Read", "Files.Read.All"]  # o "Files.ReadWrite.All" si luego quieres escribir
+SCOPES = ["Files.ReadWrite.All", "offline_access", "User.Read"]  # o "Files.ReadWrite.All" si luego quieres escribir
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 # Ruta de la carpeta en OneDrive
@@ -1201,6 +1201,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
