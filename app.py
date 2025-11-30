@@ -13,6 +13,8 @@ import av
 import cv2
 from pyzbar.pyzbar import decode as decode_barcodes
 import io
+from openpyxl.utils import get_column_letter  # NUEVO: para formato de 2 decimales
+
 
 RTC_CONFIGURATION = {
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
@@ -265,6 +267,43 @@ if 'onedrive_file_id' not in st.session_state:
 # FUNCIONES AUXILIARES DE DATOS (MOCK)
 # ==========================================
 
+# ==========================================
+# FUNCIONES AUXILIARES DE DATOS (BASE EXCEL)
+# ==========================================
+
+NUMERIC_BASE_COLS = ["CANTIDAD", "BULTO", "COSTO BASE UNITARIO"]
+TEXT_BASE_COLS = [
+    "ID",
+    "Cod Suc Destino",
+    "Suc Destino",
+    "Cod Art Ripley",
+    "SKU",
+    "Cod Art Venta",
+    "Desc Art Proveedor (Case Pack)",
+    "GUIA",
+    "LPNs",
+    "Estado_Sys",
+]
+
+
+def read_base_excel(file_obj) -> pd.DataFrame:
+    """
+    Lee el archivo base respetando tipos:
+    - Todas las columnas se leen inicialmente como texto (para no generar 12345.0).
+    - Luego se convierten a numéricas solo CANTIDAD, BULTO y COSTO BASE UNITARIO.
+    """
+    # Todo como texto para no perder ceros ni convertir a float
+    df = pd.read_excel(file_obj, dtype=str)
+    df.columns = df.columns.str.strip()  # limpiar espacios por seguridad
+
+    # Convertir a numérico solo lo que debe ser numérico
+    for col in NUMERIC_BASE_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df
+
+
 def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado", max_retries: int = 2):
     """
     Descarga el Excel desde OneDrive, actualiza la fila indicada en Estado_Sys
@@ -299,9 +338,9 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
                 err = resp.text
             return False, resp.status_code, str(err)
 
-        # 2) Leer a DataFrame
+        # 2) Leer a DataFrame respetando tipos del archivo base
         try:
-            remote_df = pd.read_excel(io.BytesIO(resp.content))
+            remote_df = read_base_excel(io.BytesIO(resp.content))
         except Exception as e:
             return False, None, f"Error leyendo Excel remoto: {e}"
 
@@ -316,10 +355,34 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
         # 4) Actualizar la fila
         remote_df.at[row_index, "Estado_Sys"] = new_status
 
-        # 5) Guardar en memoria y subir el archivo completo
+        # 5) Asegurar tipos y guardar en memoria
+
+        # Asegurar columnas de texto como texto
+        for col in TEXT_BASE_COLS:
+            if col in remote_df.columns:
+                remote_df[col] = remote_df[col].astype(str)
+
+        # Asegurar columnas numéricas como numéricas
+        for col in NUMERIC_BASE_COLS:
+            if col in remote_df.columns:
+                remote_df[col] = pd.to_numeric(remote_df[col], errors="coerce")
+
         out = io.BytesIO()
         with pd.ExcelWriter(out, engine="openpyxl") as writer:
             remote_df.to_excel(writer, index=False)
+
+            # Formato de 2 decimales para COSTO BASE UNITARIO
+            if "COSTO BASE UNITARIO" in remote_df.columns:
+                sheet_name = list(writer.sheets.keys())[0]
+                ws = writer.sheets[sheet_name]
+
+                col_idx = remote_df.columns.get_loc("COSTO BASE UNITARIO") + 1
+                col_letter = get_column_letter(col_idx)
+
+                # saltamos la cabecera (fila 1)
+                for cell in ws[col_letter][1:]:
+                    cell.number_format = "0.00"
+
         out.seek(0)
 
         resp_put = requests.put(
@@ -785,10 +848,11 @@ def load_excel_from_onedrive(item_id: str) -> pd.DataFrame | None:
         return None
 
     try:
-        return pd.read_excel(BytesIO(resp.content))
+        return read_base_excel(BytesIO(resp.content))
     except Exception as e:
         st.error(f"Error leyendo el Excel descargado: {e}")
         return None
+
 
 
 # ==========================================
@@ -858,7 +922,29 @@ def normalize_df(df: pd.DataFrame, source_name: str = "archivo"):
         df['Estado_Sys'] = 'Pendiente'
     else:
         df['Estado_Sys'] = df['Estado_Sys'].fillna('Pendiente')
+    # Tipos internos alineados con el maestro
+    text_internal = [
+        'ID',
+        'CodSucDestino',
+        'SucDestino',
+        'CodArtRipley',
+        'SKU',
+        'CodArtVenta',
+        'DescArtProveedor',
+        'GUIA',
+        'LPNs',
+        'Estado_Sys',
+    ]
+    numeric_internal = ['CANTIDAD', 'BULTO', 'COSTO_BASE_UNITARIO']
 
+    for col in text_internal:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+
+    for col in numeric_internal:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    
     return df
     
 def validate_and_set_file(df: pd.DataFrame, source_name: str = "archivo"):
@@ -930,7 +1016,7 @@ def screen_file_selection():
         if uploaded is not None:
             with st.spinner("Leyendo y validando archivo..."):
                 try:
-                    df_local = pd.read_excel(uploaded)
+                    df_local = read_base_excel(uploaded)
                     validate_and_set_file(df_local, source_name=f"archivo '{uploaded.name}'")
                 except Exception as e:
                     st.error(f"❌ No se pudo leer el archivo: {e}")
@@ -1369,6 +1455,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
