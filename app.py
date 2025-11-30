@@ -304,13 +304,18 @@ def read_base_excel(file_obj) -> pd.DataFrame:
     return df
 
 
-def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado", max_retries: int = 2):
+def update_estado_sys_onedrive_row(
+    row_index: int,
+    new_status: str = "Completado",
+    expected_id=None,
+    max_retries: int = 2,
+):
     """
     Descarga el Excel desde OneDrive, actualiza la fila indicada en Estado_Sys
     y vuelve a subir el archivo completo.
 
-    Implementa reintentos automáticos cuando hay conflictos de concurrencia
-    (409 resourceModified / 412 PreconditionFailed).
+    - Usa ETag/If-Match para no pisar cambios hechos desde otros dispositivos.
+    - Además de row_index, puede validar/buscar por ID (expected_id).
 
     Devuelve: (ok: bool, status_code: int | None, error_text: str | None)
     """
@@ -338,9 +343,12 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
                 err = resp.text
             return False, resp.status_code, str(err)
 
-        # 2) Leer a DataFrame respetando tipos del archivo base
+        # ETag del archivo para control de concurrencia
+        etag = resp.headers.get("ETag")
+
+        # 2) Leer a DataFrame
         try:
-            remote_df = read_base_excel(io.BytesIO(resp.content))
+            remote_df = pd.read_excel(io.BytesIO(resp.content))
         except Exception as e:
             return False, None, f"Error leyendo Excel remoto: {e}"
 
@@ -348,49 +356,55 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
         if "Estado_Sys" not in remote_df.columns:
             remote_df["Estado_Sys"] = "Pendiente"
 
-        # 3) Validar índice
-        if row_index < 0 or row_index >= len(remote_df):
-            return False, None, f"Índice de fila {row_index} fuera de rango en el archivo remoto."
+        # 3) Resolver qué fila(s) actualizar
+        target_index = None
 
-        # 4) Actualizar la fila
-        remote_df.at[row_index, "Estado_Sys"] = new_status
+        # 3a) Por índice físico (si está en rango)
+        if 0 <= row_index < len(remote_df):
+            target_index = row_index
 
-        # 5) Asegurar tipos y guardar en memoria
+        # 3b) Validación/búsqueda por ID si se pasa expected_id
+        if expected_id is not None and "ID" in remote_df.columns:
+            expected_id_str = str(expected_id).strip()
+            ids_str = remote_df["ID"].astype(str).str.strip()
+            matches = remote_df.index[ids_str == expected_id_str]
 
-        # Asegurar columnas de texto como texto
-        for col in TEXT_BASE_COLS:
-            if col in remote_df.columns:
-                remote_df[col] = remote_df[col].astype(str)
+            if len(matches) == 1:
+                # Si el ID existe, preferimos el índice basado en ID
+                target_index = matches[0]
+            elif len(matches) > 1:
+                # Por seguridad, si hay duplicados de ID, actualizamos todos
+                target_index = matches
 
-        # Asegurar columnas numéricas como numéricas
-        for col in NUMERIC_BASE_COLS:
-            if col in remote_df.columns:
-                remote_df[col] = pd.to_numeric(remote_df[col], errors="coerce")
+        if target_index is None:
+            # No encontramos una fila coherente que actualizar
+            return (
+                False,
+                None,
+                f"No se encontró fila a actualizar en el archivo remoto "
+                f"(row_index={row_index}, ID={expected_id}).",
+            )
 
+        # 4) Actualizar la(s) fila(s)
+        remote_df.loc[target_index, "Estado_Sys"] = new_status
+
+        # 5) Guardar en memoria y subir el archivo completo
         out = io.BytesIO()
         with pd.ExcelWriter(out, engine="openpyxl") as writer:
             remote_df.to_excel(writer, index=False)
-
-            # Formato de 2 decimales para COSTO BASE UNITARIO
-            if "COSTO BASE UNITARIO" in remote_df.columns:
-                sheet_name = list(writer.sheets.keys())[0]
-                ws = writer.sheets[sheet_name]
-
-                col_idx = remote_df.columns.get_loc("COSTO BASE UNITARIO") + 1
-                col_letter = get_column_letter(col_idx)
-
-                # saltamos la cabecera (fila 1)
-                for cell in ws[col_letter][1:]:
-                    cell.number_format = "0.00"
-
         out.seek(0)
+
+        headers_put = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        # Si tenemos ETag, usamos If-Match para no pisar cambios de otros
+        if etag:
+            headers_put["If-Match"] = etag
 
         resp_put = requests.put(
             url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            },
+            headers=headers_put,
             data=out.getvalue(),
         )
 
@@ -407,7 +421,6 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
 
         # Si es conflicto de concurrencia, reintentamos con la versión más nueva
         if resp_put.status_code in (409, 412):
-            # Pequeña pausa para evitar reintentar demasiado rápido
             time.sleep(0.3)
             continue
 
@@ -419,22 +432,28 @@ def update_estado_sys_onedrive_row(row_index: int, new_status: str = "Completado
 
 
 
+
 def marcar_tarea_completada(current_task: pd.Series) -> bool:
     """
     Marca una tarea como completada:
       1) Actualiza OneDrive (descargar → modificar fila → subir).
       2) Si eso sale bien, actualiza la copia local (file_data, session_tasks)
-         y añade el índice a processed_ids.
+         y registra la tarea en processed_ids / processed_original_indices.
 
     Si OneDrive está bloqueado (423) o falla la subida, NO avanza la tarea.
     """
     # Índice REAL de la tabla base (lo tienes en _row_index)
     row_idx = int(current_task["_row_index"])
+    task_id = current_task.get("ID")  # clave de negocio en el Excel
 
     # --- 1) Intentar actualizar el archivo remoto en OneDrive (si hay archivo asociado) ---
     file_id = st.session_state.get("onedrive_file_id")
     if file_id:
-        ok_remote, status, err = update_estado_sys_onedrive_row(row_idx, "Completado")
+        ok_remote, status, err = update_estado_sys_onedrive_row(
+            row_idx,
+            "Completado",
+            expected_id=task_id,
+        )
 
         if not ok_remote:
             # 423: archivo bloqueado de forma "física"
@@ -460,7 +479,6 @@ def marcar_tarea_completada(current_task: pd.Series) -> bool:
             # ❌ No actualizamos nada local ni avanzamos de tarea
             return False
 
-
     # --- 2) Si OneDrive fue OK (o no usamos OneDrive), actualizamos la copia local ---
 
     # 2a) Tabla base en memoria
@@ -476,13 +494,20 @@ def marcar_tarea_completada(current_task: pd.Series) -> bool:
         tasks.loc[tasks["_row_index"] == row_idx, "Estado_Sys"] = "Completado"
         st.session_state.session_tasks = tasks
 
-    # 2c) Registro en processed_ids
+    # 2c) Registro en processed_ids (índice físico)
     if "processed_ids" not in st.session_state:
         st.session_state.processed_ids = []
     if row_idx not in st.session_state.processed_ids:
         st.session_state.processed_ids.append(row_idx)
 
+    # 2d) Registro en processed_original_indices (ID de negocio)
+    if "processed_original_indices" not in st.session_state:
+        st.session_state.processed_original_indices = []
+    if task_id is not None and task_id not in st.session_state.processed_original_indices:
+        st.session_state.processed_original_indices.append(task_id)
+
     return True
+
 
 
 def save_excel_to_onedrive(item_id: str, df: pd.DataFrame) -> bool:
@@ -1403,34 +1428,52 @@ def screen_audit_details():
 def finish_batch_process():
     """
     Marca como 'Completado' en la tabla base (file_data)
-    sólo las filas cuyos índices están en processed_ids.
+    todas las filas que se trabajaron en la sesión.
+
+    Usa tanto processed_ids (índices físicos) como processed_original_indices (ID)
+    para minimizar cualquier riesgo de desalineación.
     """
     if "file_data" not in st.session_state or st.session_state.file_data.empty:
         st.warning("No hay tabla base cargada en memoria.")
         return
 
-    if "processed_ids" not in st.session_state or not st.session_state.processed_ids:
+    if (
+        ("processed_ids" not in st.session_state or not st.session_state.processed_ids)
+        and (
+            "processed_original_indices" not in st.session_state
+            or not st.session_state.processed_original_indices
+        )
+    ):
         st.warning("No hay tareas procesadas en esta sesión.")
         return
 
     main_df = st.session_state.file_data.copy().reset_index(drop=True)
 
-    # Índices únicos y válidos
+    # 1) Por índices físicos (lo que ya tenías)
     idxs = sorted(
         set(
             int(i)
-            for i in st.session_state.processed_ids
+            for i in st.session_state.get("processed_ids", [])
             if isinstance(i, (int, float)) and 0 <= int(i) < len(main_df)
         )
     )
+    if idxs:
+        main_df.loc[idxs, "Estado_Sys"] = "Completado"
 
-    if not idxs:
-        st.warning("No se encontró ningún registro en la base para esos índices.")
-        return
+    # 2) Refuerzo por ID de negocio
+    ids_done = st.session_state.get("processed_original_indices", [])
+    if ids_done and "ID" in main_df.columns:
+        ids_done_str = {str(i).strip() for i in ids_done}
+        mask_ids = main_df["ID"].astype(str).str.strip().isin(ids_done_str)
+        main_df.loc[mask_ids, "Estado_Sys"] = "Completado"
 
-    main_df.loc[idxs, "Estado_Sys"] = "Completado"
     st.session_state.file_data = main_df
-    st.info(f"Se marcaron {len(idxs)} registros como 'Completado'.")
+
+    st.info(
+        f"Se consolidó el estado de {max(len(idxs), len(ids_done))} registros "
+        "trabajados como 'Completado' en la base."
+    )
+
 
 
 
@@ -1455,6 +1498,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
