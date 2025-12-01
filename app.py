@@ -262,16 +262,15 @@ if 'show_base_table' not in st.session_state:
 if 'onedrive_file_id' not in st.session_state:
     st.session_state.onedrive_file_id = None
 
-
-# ==========================================
-# FUNCIONES AUXILIARES DE DATOS (MOCK)
-# ==========================================
-
 # ==========================================
 # FUNCIONES AUXILIARES DE DATOS (BASE EXCEL)
 # ==========================================
 
-NUMERIC_BASE_COLS = ["CANTIDAD", "BULTO", "COSTO BASE UNITARIO"]
+NUMERIC_BASE_COLS = [
+    "CANTIDAD", 
+    "BULTO", 
+    "COSTO BASE UNITARIO"
+]
 TEXT_BASE_COLS = [
     "ID",
     "Cod Suc Destino",
@@ -288,27 +287,55 @@ TEXT_BASE_COLS = [
 
 def read_base_excel(file_obj) -> pd.DataFrame:
     """
-    Lee el archivo base respetando tipos:
-    - Todas las columnas se leen inicialmente como texto (para no generar 12345.0).
-    - Luego se convierten a numéricas solo CANTIDAD, BULTO y COSTO BASE UNITARIO.
+    Lee el archivo base desde Excel forzando:
+    - todo como texto inicialmente (para que Cod Art Venta nunca se vuelva float)
+    - y luego convierte solo las columnas numéricas a número.
     """
-    # Todo como texto para no perder ceros ni convertir a float
     df = pd.read_excel(file_obj, dtype=str)
-    df.columns = df.columns.str.strip()  # limpiar espacios por seguridad
+    df.columns = df.columns.str.strip()
 
-    # Convertir a numérico solo lo que debe ser numérico
+    # Convertir columnas numéricas
     for col in NUMERIC_BASE_COLS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    return df
+    # Asegurar Estado_Sys
+    if "Estado_Sys" not in df.columns:
+        df["Estado_Sys"] = "Pendiente"
+    else:
+        df["Estado_Sys"] = df["Estado_Sys"].fillna("Pendiente")
 
+    return df
+    
+def ensure_base_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normaliza los tipos de la base según la definición acordada.
+    """
+    df = df.copy()
+    df.columns = df.columns.str.strip()
+
+    # Texto
+    for col in TEXT_BASE_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype("string")  # string dtype → NaN quedan como vacíos al exportar
+
+    # Numéricos
+    for col in NUMERIC_BASE_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Reforzamos Estado_Sys
+    if "Estado_Sys" not in df.columns:
+        df["Estado_Sys"] = "Pendiente"
+    df["Estado_Sys"] = df["Estado_Sys"].astype("string")
+
+    return df
 
 def update_estado_sys_onedrive_row(
     row_index: int,
     new_status: str = "Completado",
     expected_id=None,
-    max_retries: int = 2,
+    max_retries: int = 1,
 ):
     """
     Descarga el Excel desde OneDrive, actualiza la fila indicada en Estado_Sys
@@ -348,13 +375,9 @@ def update_estado_sys_onedrive_row(
 
         # 2) Leer a DataFrame
         try:
-            remote_df = pd.read_excel(io.BytesIO(resp.content))
+            remote_df = read_base_excel(io.BytesIO(resp.content))
         except Exception as e:
             return False, None, f"Error leyendo Excel remoto: {e}"
-
-        # Nos aseguramos que exista la columna
-        if "Estado_Sys" not in remote_df.columns:
-            remote_df["Estado_Sys"] = "Pendiente"
 
         # 3) Resolver qué fila(s) actualizar
         target_index = None
@@ -389,9 +412,26 @@ def update_estado_sys_onedrive_row(
         remote_df.loc[target_index, "Estado_Sys"] = new_status
 
         # 5) Guardar en memoria y subir el archivo completo
+
+        # Normalizamos tipos según definición oficial
+        remote_df = ensure_base_dtypes(remote_df)
+
         out = io.BytesIO()
         with pd.ExcelWriter(out, engine="openpyxl") as writer:
             remote_df.to_excel(writer, index=False)
+
+            # Formato de 2 decimales para COSTO BASE UNITARIO
+            if "COSTO BASE UNITARIO" in remote_df.columns:
+                sheet_name = list(writer.sheets.keys())[0]
+                ws = writer.sheets[sheet_name]
+
+                col_idx = remote_df.columns.get_loc("COSTO BASE UNITARIO") + 1  # 1-based
+                col_letter = get_column_letter(col_idx)
+
+                # Saltamos la cabecera (fila 1)
+                for cell in ws[col_letter][1:]:
+                    cell.number_format = "0.00"
+
         out.seek(0)
 
         headers_put = {
@@ -404,7 +444,7 @@ def update_estado_sys_onedrive_row(
 
         resp_put = requests.put(
             url,
-            headers=headers_put,
+            headers=headers_put,    
             data=out.getvalue(),
         )
 
@@ -421,7 +461,7 @@ def update_estado_sys_onedrive_row(
 
         # Si es conflicto de concurrencia, reintentamos con la versión más nueva
         if resp_put.status_code in (409, 412):
-            time.sleep(0.3)
+            time.sleep(0.15)
             continue
 
         # Si es otro tipo de error (423, 5xx, etc.), salimos del bucle
@@ -1498,6 +1538,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
