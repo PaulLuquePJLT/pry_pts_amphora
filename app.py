@@ -242,6 +242,10 @@ if 'processed_ids' not in st.session_state:
     
 if 'processed_original_indices' not in st.session_state:
     st.session_state.processed_original_indices = []
+    
+if 'bulto_confirmed_for_code' not in st.session_state:
+    # dict: { CodArtVenta(str) : True/False }
+    st.session_state.bulto_confirmed_for_code = {}
 
 # token y archivos de OneDrive en sesión
 if 'graph_token' not in st.session_state:
@@ -957,7 +961,7 @@ def get_multi_code_bultos_for_code(codartventa: str) -> pd.DataFrame:
     if any(col not in df.columns for col in required_cols):
         return pd.DataFrame()
 
-    # Aseguramos tipos básicos
+    # Normalizamos tipos básicos
     df["CodArtVenta"] = df["CodArtVenta"].astype(str).str.strip()
     df["CodSucDestino"] = df["CodSucDestino"].astype(str).str.strip()
     df["SucDestino"] = df["SucDestino"].astype(str).str.strip()
@@ -1024,6 +1028,7 @@ def reset_session():
     st.session_state.current_task_index = 0
     st.session_state.processed_ids = []
     st.session_state.processed_original_indices = []
+    st.session_state.bulto_confirmed_for_code = {}
     navigate_to('screen_scan')
 
 
@@ -1482,27 +1487,43 @@ def screen_execution():
     # Índice real en la tabla base
     row_idx = int(current_task.get("_row_index", idx))
     row_no = row_idx + 1  # para mostrar 1,2,3... en pantalla
-    
-    # ==========================================================
-    # 🔹 NUEVO: Ventana de Bultos con más de 1 código (por CodArtVenta)
-    # ==========================================================
-    current_code = str(current_task.get("CodArtVenta", "")).strip()
-    prev_code = None
-    if idx > 0 and "CodArtVenta" in tasks.columns:
-        prev_code = str(tasks.iloc[idx - 1].get("CodArtVenta", "")).strip()
 
-    # Solo mostramos la ventana cuando:
-    # - Es la primera tarea, o
-    # - Cambió el CodArtVenta respecto a la tarea anterior
-    if current_code and (idx == 0 or current_code != prev_code):
+    # ========= VISTA PREVIA DE ARMADO DE BULTOS POR CÓDIGO =========
+    current_code = str(current_task.get("CodArtVenta", "")).strip()
+
+    # Diccionario en sesión para saber qué códigos ya pasaron por la pantalla de armado
+    if "bulto_confirmed_for_code" not in st.session_state:
+        st.session_state.bulto_confirmed_for_code = {}
+
+    confirmed_dict = st.session_state.bulto_confirmed_for_code
+
+    # Si este CodArtVenta todavía no ha pasado por la ventana de armado de bultos
+    if current_code and not confirmed_dict.get(current_code, False):
         summary_multi = get_multi_code_bultos_for_code(current_code)
 
+        # Solo mostramos la ventana cuando existen bultos con más de 1 código
         if summary_multi is not None and not summary_multi.empty:
-            st.markdown("### Bultos con más de 1 código para este artículo")
-            st.markdown(f"**CodArtVenta:** `{current_code}`")
+            st.markdown("### Armado de Bultos")
+            st.markdown(
+                f"Antes de empezar a trabajar el artículo **{current_code}**, "
+                "revise los bultos que tienen más de un código asociado por tienda."
+            )
             st.dataframe(summary_multi, hide_index=True, use_container_width=True)
             st.markdown("---")
-    
+
+            if st.button("Confirmar Armado de Bultos ✅", type="primary"):
+                confirmed_dict[current_code] = True
+                st.session_state.bulto_confirmed_for_code = confirmed_dict
+                st.session_state.scroll_to_top = True
+                st.rerun()
+
+            # Mientras no confirme el armado, NO se muestra la tarjeta de tareas
+            return
+        else:
+            # Si no hay bultos multi-código para este artículo, marcamos como revisado
+            confirmed_dict[current_code] = True
+            st.session_state.bulto_confirmed_for_code = confirmed_dict
+
     # --- TARJETA COMPACTA DE LA TAREA ---
     with st.container():
         st.markdown('<div class="task-card">', unsafe_allow_html=True)
@@ -1530,7 +1551,7 @@ def screen_execution():
             st.text(f"{current_task['CodArtVenta']}")
             st.caption(current_task["DescArtProveedor"])
 
-        # Cant y Bulto en la misma fila (usa tu CSS kv-row / kv-box existente)
+        # Cant y Bulto en la misma fila
         st.markdown(
             f"""
             <div class="kv-row">
@@ -1553,13 +1574,11 @@ def screen_execution():
             unsafe_allow_html=True,
         )
 
-
-
         # Datos logísticos
         st.markdown(f"**LPN Teórico:** `{current_task['LPNs']}`")
         st.markdown("-----")
         
-        # ... dentro de screen_execution, después de mostrar el LPN teórico, etc.
+        # (tu comentario y cualquier otro bloque intermedio que tengas)
     
         # Botones de acción
         col_confirm, col_cancel = st.columns([3, 1])
@@ -1603,8 +1622,8 @@ def screen_execution():
                     st.warning("Presione de nuevo para confirmar cancelación")
                     st.session_state.confirm_cancel = True
 
-
         st.markdown("</div>", unsafe_allow_html=True)
+
         
 
 
@@ -1756,6 +1775,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
