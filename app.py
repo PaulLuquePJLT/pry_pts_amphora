@@ -1523,9 +1523,8 @@ def screen_execution():
 # --- FASE D: AUDITORÍA (MAIN) ---
 def screen_audit_main():
     st.title("Auditoría de Lote")
-    
+    c()
     st.success("✅ Se han procesado todas las tareas asignadas a esta sesión.")
-    
     st.info("⚠️ Control de Inventario: ¿Se detectó algún sobrante físico después de surtir?")
     
     col1, col2 = st.columns(2)
@@ -1541,12 +1540,6 @@ def screen_audit_main():
     with col2:
         if st.button("Menú Sobrantes 📋", use_container_width=True):
             navigate_to('screen_audit_details')
-        st.markdown("---")
-        st.subheader("Validación de confirmaciones en la base (OneDrive)")
-    
-        # Botón para lanzar la auditoría técnica
-        if st.button("Validar confirmaciones en OneDrive 🔍", use_container_width=True):
-            run_remote_audit()
 
 
 # --- FASE D: AUDITORÍA (DETALLES) ---
@@ -1675,6 +1668,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
