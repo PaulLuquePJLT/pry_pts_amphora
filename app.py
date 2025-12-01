@@ -540,14 +540,145 @@ def marcar_tarea_completada(current_task: pd.Series) -> bool:
     if row_idx not in st.session_state.processed_ids:
         st.session_state.processed_ids.append(row_idx)
 
-    # 2d) Registro en processed_original_indices (ID de negocio)
+    # 2d) Registro en processed_original_indices (IDs de negocio)
+    task_id = current_task.get("ID")
     if "processed_original_indices" not in st.session_state:
         st.session_state.processed_original_indices = []
-    if task_id is not None and task_id not in st.session_state.processed_original_indices:
-        st.session_state.processed_original_indices.append(task_id)
+
+    if task_id is not None:
+        val = str(task_id).strip()
+        if val and val not in st.session_state.processed_original_indices:
+            st.session_state.processed_original_indices.append(val)
 
     return True
 
+def run_remote_audit():
+    """
+    1) Toma la lista de IDs trabajados en la sesión.
+    2) Descarga la base actual de OneDrive.
+    3) Verifica qué IDs trabajados NO están en Estado_Sys='Completado'.
+    4) Muestra el detalle y permite reintentar la corrección.
+    """
+    st.subheader("Validación de confirmaciones en la base (auditoría técnica)")
+
+    file_id = st.session_state.get("onedrive_file_id")
+    if not file_id:
+        st.warning("No hay archivo de OneDrive vinculado en esta sesión.")
+        return
+
+    # ---- 1) IDs trabajados en la sesión ----
+    ids_trabajados = st.session_state.get("processed_original_indices", [])
+
+    # Si por alguna razón esa lista está vacía, usamos las tareas con Estado_Sys='Completado'
+    if not ids_trabajados:
+        tasks = st.session_state.get("session_tasks")
+        if tasks is None or tasks.empty or "ID" not in tasks.columns:
+            st.warning("No hay tareas trabajadas para auditar.")
+            return
+
+        ids_trabajados = (
+            tasks.loc[tasks["Estado_Sys"] == "Completado", "ID"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+            .tolist()
+        )
+
+    if not ids_trabajados:
+        st.warning("No se encontraron IDs completados para auditar.")
+        return
+
+    st.caption(f"Total de tareas trabajadas en la sesión: {len(ids_trabajados)}")
+
+    # ---- 2) Descargar base actual de OneDrive ----
+    with st.spinner("Descargando base actual desde OneDrive..."):
+        df_remote = load_excel_from_onedrive(file_id)
+
+    if df_remote is None or df_remote.empty:
+        st.error("No se pudo leer la base remota para auditoría.")
+        return
+
+    if "ID" not in df_remote.columns or "Estado_Sys" not in df_remote.columns:
+        st.error("La base remota no tiene columnas 'ID' o 'Estado_Sys'.")
+        return
+
+    # Normalizamos ID a texto para evitar problemas de tipos
+    df_remote["ID_norm"] = df_remote["ID"].astype(str).str.strip()
+    ids_norm = {str(i).strip() for i in ids_trabajados}
+
+    # ---- 3) Filtrar solo los IDs trabajados ----
+    df_trabajados = df_remote[df_remote["ID_norm"].isin(ids_norm)].copy()
+
+    if df_trabajados.empty:
+        st.warning("Ninguno de los IDs trabajados aparece en la base remota. Verifique que el archivo sea el correcto.")
+        return
+
+    # Tareas trabajadas que NO están en 'Completado'
+    df_inconsistentes = df_trabajados[df_trabajados["Estado_Sys"].astype(str) != "Completado"].copy()
+
+    if df_inconsistentes.empty:
+        st.success("✅ Todas las tareas trabajadas están marcadas como 'Completado' en la base de OneDrive.")
+        return
+
+    st.error(f"Se encontraron {len(df_inconsistentes)} tareas trabajadas que NO quedaron como 'Completado' en la base.")
+
+    # Mostrar detalle para auditoría
+    cols_mostrar = [
+        "ID",
+        "Cod Suc Destino",
+        "Suc Destino",
+        "Cod Art Venta",
+        "CANTIDAD",
+        "Estado_Sys",
+    ]
+    cols_mostrar = [c for c in cols_mostrar if c in df_inconsistentes.columns]
+
+    st.dataframe(df_inconsistentes[cols_mostrar], use_container_width=True)
+
+    # ---- 4) Reintento automático usando el índice original de la sesión ----
+    tasks = st.session_state.get("session_tasks")
+    if tasks is None or tasks.empty or "_row_index" not in tasks.columns:
+        st.info("No se pudo obtener el índice original de las filas. La corrección automática no está disponible.")
+        return
+
+    # Normalizamos IDs en tasks para poder hacer join
+    tasks_tmp = tasks.copy()
+    tasks_tmp["ID_norm"] = tasks_tmp["ID"].astype(str).str.strip()
+    df_inconsistentes["ID_norm"] = df_inconsistentes["ID"].astype(str).str.strip()
+
+    to_fix = df_inconsistentes.merge(
+        tasks_tmp[["ID_norm", "_row_index"]],
+        on="ID_norm",
+        how="left",
+    )
+
+    # Nos quedamos solo con las filas que tienen índice original
+    to_fix = to_fix.dropna(subset=["_row_index"])
+
+    if to_fix.empty:
+        st.info("No se encontraron índices originales para reintentar la corrección automática.")
+        return
+
+    if st.button("Reintentar marcarlas como 'Completado' en OneDrive 🔁", type="primary"):
+        ok_count = 0
+        errores = []
+
+        for _, r in to_fix.iterrows():
+            idx = int(r["_row_index"])
+            ok, status, err = update_estado_sys_onedrive_row(idx, "Completado")
+
+            if not ok:
+                errores.append(f"ID {r['ID']} (fila {idx}): {status} - {err}")
+            else:
+                ok_count += 1
+
+        st.success(f"Se reintentó actualizar {ok_count} registros en OneDrive.")
+
+        if errores:
+            st.warning("Algunas filas no pudieron corregirse automáticamente:")
+            for e in errores:
+                st.write("•", e)
 
 
 def save_excel_to_onedrive(item_id: str, df: pd.DataFrame) -> bool:
@@ -1410,6 +1541,12 @@ def screen_audit_main():
     with col2:
         if st.button("Menú Sobrantes 📋", use_container_width=True):
             navigate_to('screen_audit_details')
+        st.markdown("---")
+        st.subheader("Validación de confirmaciones en la base (OneDrive)")
+    
+        # Botón para lanzar la auditoría técnica
+        if st.button("Validar confirmaciones en OneDrive 🔍", use_container_width=True):
+            run_remote_audit()
 
 
 # --- FASE D: AUDITORÍA (DETALLES) ---
@@ -1538,6 +1675,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
