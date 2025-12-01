@@ -6,7 +6,7 @@ from io import BytesIO
 import requests
 import msal
 from PIL import Image
-from pyzbar.pyzbar import decodef
+from pyzbar.pyzbar import decode
 import streamlit.components.v1 as components 
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import av
@@ -1774,6 +1774,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
