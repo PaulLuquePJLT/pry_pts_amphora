@@ -938,6 +938,70 @@ def generate_mock_data():
                 })
                 id_counter += 1
     return pd.DataFrame(data)
+    
+def get_multi_code_bultos_for_code(codartventa: str) -> pd.DataFrame:
+    """
+    Devuelve una tabla con los bultos (por local) donde el bulto tiene
+    más de 1 CodArtVenta asociado, filtrado para el CodArtVenta indicado.
+
+    Salida:
+        Local (CodSucDestino-SucDestino), BULTO
+    """
+    base_df = st.session_state.get("file_data")
+    if base_df is None or base_df.empty:
+        return pd.DataFrame()
+
+    df = base_df.copy()
+
+    required_cols = ["CodSucDestino", "SucDestino", "BULTO", "CodArtVenta"]
+    if any(col not in df.columns for col in required_cols):
+        return pd.DataFrame()
+
+    # Aseguramos tipos básicos
+    df["CodArtVenta"] = df["CodArtVenta"].astype(str).str.strip()
+    df["CodSucDestino"] = df["CodSucDestino"].astype(str).str.strip()
+    df["SucDestino"] = df["SucDestino"].astype(str).str.strip()
+
+    # 1) Bultos por sucursal con cantidad de códigos distintos
+    grp = (
+        df.groupby(["CodSucDestino", "SucDestino", "BULTO"])["CodArtVenta"]
+        .nunique()
+        .reset_index(name="n_codigos")
+    )
+
+    # Solo bultos con más de 1 código asociado
+    multi_keys = grp[grp["n_codigos"] > 1][["CodSucDestino", "SucDestino", "BULTO"]]
+    if multi_keys.empty:
+        return pd.DataFrame()
+
+    # 2) Filtramos la base a esos bultos multi-código
+    merged = df.merge(
+        multi_keys,
+        on=["CodSucDestino", "SucDestino", "BULTO"],
+        how="inner",
+    )
+
+    # 3) Nos quedamos SOLO con las filas del CodArtVenta actual
+    cod = str(codartventa).strip()
+    subset = merged[merged["CodArtVenta"] == cod]
+
+    if subset.empty:
+        return pd.DataFrame()
+
+    # 4) Armamos tabla final: Local - Bulto
+    summary = (
+        subset[["CodSucDestino", "SucDestino", "BULTO"]]
+        .drop_duplicates()
+        .copy()
+    )
+    summary["Local"] = (
+        summary["CodSucDestino"].astype(str).str.strip()
+        + "-"
+        + summary["SucDestino"].astype(str).str.strip()
+    )
+    summary = summary[["Local", "BULTO"]].sort_values(["Local", "BULTO"])
+
+    return summary
 
 
 def generate_invalid_data():
@@ -1418,7 +1482,27 @@ def screen_execution():
     # Índice real en la tabla base
     row_idx = int(current_task.get("_row_index", idx))
     row_no = row_idx + 1  # para mostrar 1,2,3... en pantalla
+    
+    # ==========================================================
+    # 🔹 NUEVO: Ventana de Bultos con más de 1 código (por CodArtVenta)
+    # ==========================================================
+    current_code = str(current_task.get("CodArtVenta", "")).strip()
+    prev_code = None
+    if idx > 0 and "CodArtVenta" in tasks.columns:
+        prev_code = str(tasks.iloc[idx - 1].get("CodArtVenta", "")).strip()
 
+    # Solo mostramos la ventana cuando:
+    # - Es la primera tarea, o
+    # - Cambió el CodArtVenta respecto a la tarea anterior
+    if current_code and (idx == 0 or current_code != prev_code):
+        summary_multi = get_multi_code_bultos_for_code(current_code)
+
+        if summary_multi is not None and not summary_multi.empty:
+            st.markdown("### Bultos con más de 1 código para este artículo")
+            st.markdown(f"**CodArtVenta:** `{current_code}`")
+            st.dataframe(summary_multi, hide_index=True, use_container_width=True)
+            st.markdown("---")
+    
     # --- TARJETA COMPACTA DE LA TAREA ---
     with st.container():
         st.markdown('<div class="task-card">', unsafe_allow_html=True)
@@ -1672,6 +1756,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
