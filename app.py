@@ -1298,23 +1298,20 @@ def screen_scan():
         "para agregarlo a la lista."
     )
 
+    HIGH_RES_CONSTRAINTS = {
+        "video": {
+            # Intentar forzar al menos 1280x720
+            "width": {"min": 1280, "ideal": 1920},
+            "height": {"min": 720, "ideal": 1080},
+            "facingMode": {"ideal": "environment"},
+        },
+        "audio": False,
+    }
+    
     webrtc_ctx = webrtc_streamer(
         key="barcode-scanner-live",
         video_processor_factory=LiveBarcodeProcessor,
-        media_stream_constraints={
-            "video": {
-                # 👉 resolución sugerida (puedes ajustar estos valores)
-                #"width": {"ideal": 1280},
-                #"height": {"ideal": 720},
-                # para algunos equipos, puedes probar incluso 1920x1080:
-                "width": {"ideal": 1920},
-                "height": {"ideal": 1080},
-    
-                # 👇 seguir pidiendo cámara trasera
-                "facingMode": {"ideal": "environment"},
-            },
-            "audio": False,
-        },
+        media_stream_constraints=HIGH_RES_CONSTRAINTS,
         async_processing=True,
     )
 
@@ -1675,6 +1672,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
