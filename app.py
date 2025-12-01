@@ -6,7 +6,7 @@ from io import BytesIO
 import requests
 import msal
 from PIL import Image
-from pyzbar.pyzbar import decode
+from pyzbar.pyzbar import decodef
 import streamlit.components.v1 as components 
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import av
@@ -1509,7 +1509,6 @@ def screen_execution():
                 "revise los bultos que tienen más de un código asociado por tienda."
             )
             st.dataframe(summary_multi, hide_index=True, use_container_width=True)
-            st.markdown("---")
 
             if st.button("Confirmar Armado de Bultos ✅", type="primary"):
                 confirmed_dict[current_code] = True
@@ -1775,6 +1774,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
