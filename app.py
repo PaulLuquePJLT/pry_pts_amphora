@@ -1523,7 +1523,7 @@ def screen_execution():
 # --- FASE D: AUDITORÍA (MAIN) ---
 def screen_audit_main():
     st.title("Auditoría de Lote")
-    c()
+    run_remote_audit()
     st.success("✅ Se han procesado todas las tareas asignadas a esta sesión.")
     st.info("⚠️ Control de Inventario: ¿Se detectó algún sobrante físico después de surtir?")
     
@@ -1668,6 +1668,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
