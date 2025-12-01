@@ -1303,8 +1303,15 @@ def screen_scan():
         video_processor_factory=LiveBarcodeProcessor,
         media_stream_constraints={
             "video": {
-                # 👇 intenta siempre usar la cámara trasera
-                "facingMode": {"ideal": "environment"}
+                # 👉 resolución sugerida (puedes ajustar estos valores)
+                #"width": {"ideal": 1280},
+                #"height": {"ideal": 720},
+                # para algunos equipos, puedes probar incluso 1920x1080:
+                "width": {"ideal": 1920},
+                "height": {"ideal": 1080},
+    
+                # 👇 seguir pidiendo cámara trasera
+                "facingMode": {"ideal": "environment"},
             },
             "audio": False,
         },
@@ -1668,6 +1675,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
