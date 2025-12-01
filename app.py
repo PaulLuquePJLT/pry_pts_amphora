@@ -1301,8 +1301,8 @@ def screen_scan():
     HIGH_RES_CONSTRAINTS = {
         "video": {
             # Intentar forzar al menos 1280x720
-            "width": {"min": 1280, "ideal": 1920},
-            "height": {"min": 720, "ideal": 1080},
+            "width": {"min": 1920, "ideal": 1920},
+            "height": {"min": 1080, "ideal": 1080},
             "facingMode": {"ideal": "environment"},
         },
         "audio": False,
@@ -1672,6 +1672,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
