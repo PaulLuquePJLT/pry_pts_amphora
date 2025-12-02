@@ -26,7 +26,7 @@ RTC_CONFIGURATION = {
 
 st.set_page_config(
     page_title="Put To Store PJLT",
-    page_icon="android-chrome-512x512",
+    page_icon="https://i.postimg.cc/FR7wZSfv/logo-dinetfavicon.png",
     layout="wide",                 # usar todo el ancho de la pantalla
     initial_sidebar_state="collapsed"  # ocultar barra lateral en móvil
 )
@@ -1775,6 +1775,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
