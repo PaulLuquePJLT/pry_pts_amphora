@@ -24,7 +24,7 @@ RTC_CONFIGURATION = {
 # CONFIGURACIÓN DE LA PÁGINA
 # ==========================================
 
-favicon = Image.open("https://ibb.co/SDPQ73mb")
+favicon = Image.open("<a href='https://postimages.org/' target='_blank'><img src='https://i.postimg.cc/N9vNG57C/logo-dinetfavicon.png' border='0' alt='logo-dinetfavicon'></a>")
 st.set_page_config(
     page_title="Put To Store PJLT",
     page_icon=favicon,
@@ -1776,6 +1776,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
