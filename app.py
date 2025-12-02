@@ -24,10 +24,9 @@ RTC_CONFIGURATION = {
 # CONFIGURACIÓN DE LA PÁGINA
 # ==========================================
 
-favicon = Image.open("android-chrome-512x512")
 st.set_page_config(
     page_title="Put To Store PJLT",
-    page_icon=favicon,
+    page_icon="android-chrome-512x512",
     layout="wide",                 # usar todo el ancho de la pantalla
     initial_sidebar_state="collapsed"  # ocultar barra lateral en móvil
 )
@@ -1776,6 +1775,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
