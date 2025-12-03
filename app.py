@@ -1286,28 +1286,6 @@ def screen_file_selection():
                     validate_and_set_file(df_local, source_name=f"archivo '{uploaded.name}'")
                 except Exception as e:
                     st.error(f"❌ No se pudo leer el archivo: {e}")
-        st.markdown("### Modo Demo / Pruebas")
-
-        if st.button("📄 Distribucion_Lunes.xlsx (Simular válido)", use_container_width=True):
-            with st.spinner("Generando datos de ejemplo..."):
-                time.sleep(1)
-                df = generate_mock_data()
-                # Validación LPN simple
-                invalid_lpns = df[~df['LPNs'].astype(str).str.startswith('NA')]
-                if not invalid_lpns.empty:
-                    st.error("❌ Error: Se encontraron LPNs que no inician con 'NA'.")
-                else:
-                    st.session_state.file_data = df
-                    st.session_state.onedrive_file_id = None
-                    st.success(f"✅ Archivo de ejemplo válido. {len(df)} registros cargados.")
-                    time.sleep(1)
-                    navigate_to('screen_scan')
-
-        if st.button("📄 Error_LPN.xlsx (Simular error)", use_container_width=True):
-            with st.spinner("Validando..."):
-                time.sleep(1)
-                df = generate_invalid_data()
-                st.error("❌ Validación fallida: En la fila 1, el campo 'LPNs' tiene el valor '123456'. Todos los LPNs deben comenzar con 'NA'.")
 
 
 # --- FASE B: ESCANEO ---
@@ -1775,6 +1753,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
