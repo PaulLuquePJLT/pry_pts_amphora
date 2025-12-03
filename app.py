@@ -1317,8 +1317,8 @@ def screen_scan():
         col_in, col_btn = st.columns([4, 1])
 
         code_input = col_in.text_input(
-            "Ingrese SKU o Código",
-            placeholder="Ej: 36710325",
+            "Ingrese CodArtVenta",
+            placeholder="Ej: 2012366913953",
             key="txt_manual_code",
         )
 
@@ -1753,6 +1753,7 @@ elif st.session_state.current_screen == 'screen_audit_details':
     screen_audit_details()
 else:
     st.error("Pantalla no encontrada")
+
 
 
 
